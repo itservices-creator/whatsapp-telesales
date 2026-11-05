@@ -1,0 +1,30 @@
+[
+  {
+    "name": "delivered",
+    "language": "ar",
+    "label": "تم التوصيل (delivered)",
+    "body": "مرحباً أستاذ/ة {{1}} 💚👋\nمع حضرتك فريق WAFY Store 🛍️✨\nتم توصيل طلبك بنجاح ✅📦",
+    "params": ["اسم العميل"]
+  },
+  {
+    "name": "return_verified",
+    "language": "ar",
+    "label": "متابعة استلام الطلب (return_verified)",
+    "body": "مرحباً أستاذ/ة {{1}} 💚👋\nمع حضرتك فريق WAFY Store 🛍️✨\nتحديث بخصوص طلبك 📦",
+    "params": ["اسم العميل"]
+  },
+  {
+    "name": "_____track_order",
+    "language": "ar",
+    "label": "تتبع الطلب (track_order)",
+    "body": "مرحباً أستاذ/ة {{1}} 💚👋\nمع حضرتك فريق WAFY Store 🛍️✨\nتم تجهيز طلبك بنجاح ✅📦\nتفاصيل طلبك: {{2}}",
+    "params": ["اسم العميل", "رابط التتبع"]
+  },
+  {
+    "name": "_____confirmed_orders",
+    "language": "ar",
+    "label": "تأكيد الطلب (confirmed_orders)",
+    "body": "مرحباً أستاذ/ة {{1}} 💚👋\nمع حضرتك فريق WAFY Store 🛍️✨\nيسعدنا إبلاغ حضرتك بأنه تم تأكيد طلبك وجارٍ العمل على تجهيزه 📦❤️\nتفاصيل طلبك: {{2}}",
+    "params": ["اسم العميل", "رابط الطلب"]
+  }
+]

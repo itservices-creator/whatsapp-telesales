@@ -1,0 +1,693 @@
+(() => {
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- i18n Translations ----------
+  const I18N = {
+    ar: {
+      dir: 'rtl',
+      lang_name: 'English',
+      toggle_text: '🌐 English',
+      toggle_short: 'EN',
+      page_title: 'خدمة العملاء | Taager Live Chat',
+      login_title: 'خدمة العملاء',
+      login_sub: 'سجّل الدخول للبدء في الرد على العملاء',
+      login_username_placeholder: 'اسم المستخدم',
+      login_password_placeholder: 'كلمة المرور',
+      login_btn: 'تسجيل الدخول',
+      login_err: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+      search_placeholder: 'ابحث بالاسم أو الرقم…',
+      composer_placeholder: 'اكتب رسالة…',
+      all_tabs: 'الكل',
+      unassigned: 'غير مُسندة',
+      assigned_to: 'الموظف',
+      via: 'عبر',
+      no_contacts: 'لا توجد محادثات بعد',
+      empty_title: 'اختر محادثة للبدء',
+      empty_sub: 'ستظهر رسائل العملاء هنا لحظة وصولها',
+      loading_chat: 'جارٍ تحميل المحادثة…',
+      demo_banner: 'وضع تجريبي: بيانات وهمية بدون اتصال بـ Boostrify',
+      tpl_bar_text: '⚠️ انتهت نافذة الـ 24 ساعة — البدء من جديد يتم بقالب رسالة معتمد',
+      send_tpl_btn: 'إرسال قالب',
+      new_chat_title: 'محادثة جديدة',
+      new_chat_line_label: 'من أي رقم تريد المراسلة؟',
+      new_chat_phone_label: 'رقم العميل (صيغة دولية بدون +)',
+      new_chat_name_label: 'اسم العميل (اختياري)',
+      new_chat_name_placeholder: 'مثال: أحمد محمد',
+      cancel_btn: 'إلغاء',
+      start_chat_btn: 'بدء المحادثة',
+      tpl_modal_title: 'إرسال قالب رسالة',
+      tpl_select_label: 'القالب:',
+      send_btn: 'إرسال',
+      close_btn: 'إغلاق',
+      admin_title: 'إدارة الموظفين وتخصيص أرقام الدول',
+      add_employee_title: 'إضافة موظف جديد',
+      add_employee_name: 'الاسم (مثال: أحمد علي)',
+      add_employee_username: 'اسم المستخدم (username)',
+      add_employee_password: 'كلمة المرور',
+      allowed_lines_title: 'الأرقام المسموح له بالرد والإرسال منها:',
+      add_employee_btn: 'إضافة الموظف',
+      all_countries_admin: 'جميع الدول والأرقام (مدير)',
+      no_lines_allowed: 'لا توجد أرقام مسموحة',
+      change_password: 'كلمة المرور',
+      allowed_lines_btn: 'الأرقام المسموحة',
+      deactivate_btn: 'تعطيل',
+      activate_btn: 'تفعيل',
+      new_pass_prompt: 'كلمة مرور جديدة لـ',
+      min_pass_err: 'كلمة المرور 4 أحرف على الأقل',
+      select_lines_prompt: 'حدد أرقام الدول المسموح لـ',
+      enabled: 'مفعل',
+      disabled: 'معطل',
+      require_one_line_err: 'يرجى اختيار رقم دولة واحد على الأقل للموظف',
+      max_file_err: 'الحد الأقصى لحجم الملف 16 ميجابايت',
+      send_failed: 'فشل الإرسال:',
+      no_templates_err: 'لا توجد قوالب مضافة. أضف القوالب المعتمدة من Meta في ملف templates.json',
+      role_admin: 'مدير',
+      role_agent: 'موظف',
+      today: 'اليوم',
+      yesterday: 'أمس',
+      photo_preview: '📷 صورة',
+      audio_preview: '🎤 رسالة صوتية',
+      doc_preview: '📄 ملف',
+      file_label: 'ملف',
+      image_label: 'صورة',
+      footer_text: '© 2026 Taager.com • تم الإنشاء بواسطة فريق iTTaager Team',
+    },
+    en: {
+      dir: 'ltr',
+      lang_name: 'العربية',
+      toggle_text: '🌐 العربية',
+      toggle_short: 'AR',
+      page_title: 'Customer Support | Taager Live Chat',
+      login_title: 'Customer Support',
+      login_sub: 'Sign in to start responding to customers',
+      login_username_placeholder: 'Username',
+      login_password_placeholder: 'Password',
+      login_btn: 'Sign In',
+      login_err: 'Invalid username or password',
+      search_placeholder: 'Search by name or number…',
+      composer_placeholder: 'Type a message…',
+      all_tabs: 'All',
+      unassigned: 'Unassigned',
+      assigned_to: 'Agent',
+      via: 'via',
+      no_contacts: 'No conversations yet',
+      empty_title: 'Select a chat to start',
+      empty_sub: 'Customer messages will appear here in real time',
+      loading_chat: 'Loading conversation…',
+      demo_banner: 'Demo Mode: Mock data without live Boostrify connection',
+      tpl_bar_text: '⚠️ 24-hour window closed — Start with an approved message template',
+      send_tpl_btn: 'Send Template',
+      new_chat_title: 'New Conversation',
+      new_chat_line_label: 'Send from which number?',
+      new_chat_phone_label: 'Customer number (international format without +)',
+      new_chat_name_label: 'Customer name (optional)',
+      new_chat_name_placeholder: 'e.g. John Doe',
+      cancel_btn: 'Cancel',
+      start_chat_btn: 'Start Chat',
+      tpl_modal_title: 'Send Message Template',
+      tpl_select_label: 'Template:',
+      send_btn: 'Send',
+      close_btn: 'Close',
+      admin_title: 'Staff Management & Country Line Assignment',
+      add_employee_title: 'Add New Employee',
+      add_employee_name: 'Name (e.g. John Doe)',
+      add_employee_username: 'Username',
+      add_employee_password: 'Password',
+      allowed_lines_title: 'Allowed country numbers for this employee:',
+      add_employee_btn: 'Add Employee',
+      all_countries_admin: 'All Countries & Numbers (Admin)',
+      no_lines_allowed: 'No allowed numbers',
+      change_password: 'Password',
+      allowed_lines_btn: 'Allowed Lines',
+      deactivate_btn: 'Deactivate',
+      activate_btn: 'Activate',
+      new_pass_prompt: 'New password for',
+      min_pass_err: 'Password must be at least 4 characters',
+      select_lines_prompt: 'Select allowed country numbers for',
+      enabled: 'Active',
+      disabled: 'Disabled',
+      require_one_line_err: 'Please select at least one country number',
+      max_file_err: 'Maximum file size is 16MB',
+      send_failed: 'Failed to send:',
+      no_templates_err: 'No templates found. Add Meta-approved templates in templates.json',
+      role_admin: 'Admin',
+      role_agent: 'Agent',
+      today: 'Today',
+      yesterday: 'Yesterday',
+      photo_preview: '📷 Photo',
+      audio_preview: '🎤 Voice message',
+      doc_preview: '📄 Document',
+      file_label: 'File',
+      image_label: 'Photo',
+      footer_text: '© 2026 Taager.com • Created by iTTaager Team',
+    },
+  };
+
+  let curLang = localStorage.getItem('taager_lang') || 'ar';
+  const t = (k) => I18N[curLang]?.[k] || I18N.ar[k] || k;
+
+  function applyLanguage(lang) {
+    curLang = lang;
+    localStorage.setItem('taager_lang', lang);
+    const dict = I18N[lang];
+    document.documentElement.lang = lang;
+    document.documentElement.dir = dict.dir;
+    document.title = dict.page_title;
+
+    // Update data-i18n elements
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.dataset.i18n;
+      if (dict[key]) el.textContent = dict[key];
+    });
+
+    // Update placeholders
+    if ($('login-username')) $('login-username').placeholder = dict.login_username_placeholder;
+    if ($('login-password')) $('login-password').placeholder = dict.login_password_placeholder;
+    if ($('search')) $('search').placeholder = dict.search_placeholder;
+    if ($('text')) $('text').placeholder = dict.composer_placeholder;
+    if ($('new-name')) $('new-name').placeholder = dict.new_chat_name_placeholder;
+    if ($('u-name')) $('u-name').placeholder = dict.add_employee_name;
+    if ($('u-username')) $('u-username').placeholder = dict.add_employee_username;
+    if ($('u-password')) $('u-password').placeholder = dict.add_employee_password;
+
+    // Update language toggle buttons
+    if ($('lang-toggle-login')) $('lang-toggle-login').textContent = dict.toggle_text;
+    if ($('lang-toggle-app')) $('lang-toggle-app').textContent = dict.toggle_short;
+
+    if (state.user) {
+      $('whoami').textContent = `${state.user.name}${state.user.role === 'admin' ? ' • ' + dict.role_admin : ''}`;
+      renderTabs();
+      renderContacts();
+      if (state.active) renderMessages();
+    }
+  }
+
+  function toggleLanguage() {
+    applyLanguage(curLang === 'ar' ? 'en' : 'ar');
+  }
+
+  // ---------- State ----------
+  const state = {
+    contacts: [],
+    active: null,
+    messages: [],
+    file: null,
+    socket: null,
+    lines: [],
+    allLines: [],
+    line: 'all',
+  };
+
+  const lineName = (id) => (state.allLines || state.lines).find((l) => l.id === id)?.name || id;
+  const chatUrl = (c, tail) => `/api/contacts/${encodeURIComponent(c.line)}/${encodeURIComponent(c.phone)}/${tail}`;
+  const isActive = (c) => state.active && state.active.line === c.line && state.active.phone === c.phone;
+
+  const esc = (s = '') => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const linkify = (s) => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#00a884;text-decoration:underline">$1</a>');
+  const hue = (s = '') => [...s].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  const avatar = (c) => `style="background:hsl(${hue(c.phone)} 55% 42%)"`;
+  const label = (c) => c.name || '+' + c.phone;
+  const initial = (c) => (c.name || c.phone).trim().charAt(0).toUpperCase();
+
+  const fmtTime = (ts) => new Date(ts).toLocaleTimeString(curLang === 'ar' ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+  const fmtDay = (ts) => {
+    const d = new Date(ts), now = new Date();
+    if (d.toDateString() === now.toDateString()) return t('today');
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return t('yesterday');
+    return d.toLocaleDateString(curLang === 'ar' ? 'ar-EG' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+  };
+  const fmtList = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts), now = new Date();
+    return d.toDateString() === now.toDateString() ? fmtTime(ts) : d.toLocaleDateString(curLang === 'ar' ? 'ar-EG' : 'en-US', { day: 'numeric', month: 'short' });
+  };
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, opts);
+    if (res.status === 401) { showLogin(); throw new Error('unauthorized'); }
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
+
+  // ---------- Auth & Login ----------
+  function showLogin() {
+    $('login').classList.remove('hidden');
+    $('app').classList.add('hidden');
+  }
+
+  $('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('login-error').textContent = '';
+    try {
+      await api('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: $('login-username').value, password: $('login-password').value }),
+      });
+      start();
+    } catch {
+      $('login-error').textContent = t('login_err');
+    }
+  });
+
+  $('logout').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    location.reload();
+  });
+
+  $('lang-toggle-login').addEventListener('click', toggleLanguage);
+  $('lang-toggle-app').addEventListener('click', toggleLanguage);
+
+  async function start() {
+    try { state.user = await api('/api/me'); } catch { return; }
+    $('login').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    $('whoami').textContent = `${state.user.name}${state.user.role === 'admin' ? ' • ' + t('role_admin') : ''}`;
+    $('admin-btn').classList.toggle('hidden', state.user.role !== 'admin');
+    state.users = await api('/api/users');
+    state.templates = await api('/api/templates');
+    const info = await api('/api/lines');
+    state.lines = info.lines;
+    state.allLines = info.allLines || info.lines;
+    $('demo-banner').classList.toggle('hidden', !info.demo);
+    applyLanguage(curLang);
+    await loadContacts();
+    connectSocket();
+  }
+
+  // ---------- Socket.IO ----------
+  function connectSocket() {
+    if (state.socket) state.socket.disconnect();
+    const s = (state.socket = io());
+    s.on('connect', () => $('conn').classList.add('on'));
+    s.on('disconnect', () => $('conn').classList.remove('on'));
+    s.on('message', onIncoming);
+    s.on('refresh', loadContacts);
+    s.on('status', ({ id, status }) => {
+      const m = state.messages.find((x) => x.id === id);
+      if (m) {
+        m.status = status;
+        const tick = document.querySelector(`[data-id="${CSS.escape(id)}"] .tick`);
+        if (tick) paintTick(tick, status);
+      }
+    });
+  }
+
+  function onIncoming(m) {
+    const active = state.active && state.active.line === m.line && state.active.phone === m.phone;
+    if (active && !state.messages.some((x) => x.id === m.id)) {
+      state.messages.push(m);
+      appendMessage(m);
+      if (m.direction === 'in') {
+        state.windowOpen = true;
+        updateComposer();
+        fetch(chatUrl(m, 'messages?sync=0')); // mark read
+      }
+    }
+    if (m.direction === 'in' && (!active || document.hidden)) beep();
+    loadContacts();
+  }
+
+  function beep() {
+    try {
+      const a = new AudioContext(), o = a.createOscillator(), g = a.createGain();
+      o.frequency.value = 880; g.gain.value = .05; o.connect(g); g.connect(a.destination);
+      o.start(); o.stop(a.currentTime + .12);
+    } catch { /* autoplay blocked */ }
+  }
+
+  // ---------- Contacts & Tabs ----------
+  async function loadContacts() {
+    state.contacts = await api('/api/contacts');
+    renderContacts();
+  }
+
+  function renderTabs() {
+    const unread = (id) => state.contacts.filter((c) => (id === 'all' || c.line === id) && !isActive(c)).reduce((a, c) => a + c.unread, 0);
+    const tabs = [{ id: 'all', name: t('all_tabs') }, ...state.lines];
+    $('tabs').innerHTML = tabs.map((tab) => {
+      const n = unread(tab.id);
+      return `<button class="tab ${state.line === tab.id ? 'active' : ''}" data-line="${esc(tab.id)}">${esc(tab.name)}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    }).join('');
+    $('tabs').classList.toggle('hidden', state.lines.length < 2);
+  }
+
+  $('tabs').addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab');
+    if (btn) {
+      state.line = btn.dataset.line;
+      renderTabs();
+      renderContacts();
+    }
+  });
+
+  function renderContacts() {
+    renderTabs();
+    const q = $('search').value.trim().toLowerCase();
+    const list = state.contacts.filter((c) =>
+      (state.line === 'all' || c.line === state.line) && (!q || label(c).toLowerCase().includes(q) || c.phone.includes(q)));
+
+    $('contacts').innerHTML = list.map((c) => `
+      <li class="contact ${isActive(c) ? 'active' : ''}" data-line="${esc(c.line)}" data-phone="${esc(c.phone)}">
+        <div class="avatar" ${avatar(c)}>${esc(initial(c))}</div>
+        <div class="c-main">
+          <div class="c-row"><span class="name">${esc(label(c))}</span><span class="time">${fmtList(c.last_message_at)}</span></div>
+          <div class="c-row"><span class="preview">${esc(c.last_preview)}</span>${c.unread && !isActive(c) ? `<span class="badge">${c.unread}</span>` : ''}</div>
+          ${contactTag(c)}
+        </div>
+      </li>`).join('') || `<li class="preview" style="padding:28px;text-align:center">${t('no_contacts')}</li>`;
+  }
+
+  function contactTag(c) {
+    const parts = [];
+    if (state.line === 'all' && state.lines.length > 1) parts.push(`${t('via')} ${esc(lineName(c.line))}`);
+    if (c.owner == null) return `<div class="c-line unassigned">${t('unassigned')}${parts.length ? ' • ' + parts.join(' ') : ''}</div>`;
+    if (state.user.role === 'admin') parts.push(`${t('assigned_to')}: ${esc(c.owner_name || '')}`);
+    return parts.length ? `<div class="c-line">${parts.join(' • ')}</div>` : '';
+  }
+
+  $('search').addEventListener('input', renderContacts);
+  $('contacts').addEventListener('click', (e) => {
+    const li = e.target.closest('.contact');
+    if (li) openChat(li.dataset.line, li.dataset.phone);
+  });
+
+  // ---------- Chat Thread ----------
+  async function openChat(line, phone) {
+    const c = state.contacts.find((x) => x.line === line && x.phone === phone) || { line, phone };
+    state.active = c;
+    $('empty').classList.add('hidden');
+    $('thread').classList.remove('hidden');
+    $('app').classList.add('open');
+    $('head-name').textContent = label(c);
+    $('head-phone').textContent = '+' + c.phone;
+    $('head-line').textContent = state.lines.length > 1 ? `${t('via')} ${lineName(line)}` : '';
+    $('head-avatar').outerHTML = `<div id="head-avatar" class="avatar" ${avatar(c)}>${esc(initial(c))}</div>`;
+    clearAttachment();
+    renderContacts();
+    $('messages').innerHTML = `<div class="day">${t('loading_chat')}</div>`;
+
+    try {
+      const r = await api(chatUrl(c, 'messages'));
+      state.messages = r.messages;
+      state.windowOpen = r.windowOpen;
+      state.active = { ...c, ...r.contact };
+    } catch { return; }
+
+    renderMessages();
+    renderOwnerSelect();
+    updateComposer();
+    loadContacts();
+
+    if (!state.windowOpen && !state.messages.length) openTemplateModal();
+    else $('text').focus();
+  }
+
+  function renderOwnerSelect() {
+    const sel = $('owner-select');
+    sel.classList.toggle('hidden', state.user.role !== 'admin');
+    if (state.user.role !== 'admin') return;
+    const agents = (state.users || []).filter((u) => u.active);
+    sel.innerHTML = `<option value="">${t('unassigned')}</option>` +
+      agents.map((u) => `<option value="${u.id}" ${state.active.owner === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
+  }
+
+  $('owner-select').addEventListener('change', async (e) => {
+    await api(`/api/chats/${encodeURIComponent(state.active.line)}/${encodeURIComponent(state.active.phone)}/owner`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: e.target.value || null }),
+    });
+    state.active.owner = e.target.value ? Number(e.target.value) : null;
+    loadContacts();
+  });
+
+  function updateComposer() {
+    $('composer').classList.toggle('hidden', !state.windowOpen);
+    $('tpl-bar').classList.toggle('hidden', state.windowOpen);
+  }
+
+  function renderMessages() {
+    const box = $('messages');
+    box.innerHTML = '';
+    let lastDay = '';
+    for (const m of state.messages) {
+      const d = new Date(m.ts).toDateString();
+      if (d !== lastDay) { lastDay = d; box.insertAdjacentHTML('beforeend', `<div class="day">${fmtDay(m.ts)}</div>`); }
+      box.insertAdjacentHTML('beforeend', messageHtml(m));
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function appendMessage(m) {
+    const box = $('messages');
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+    box.insertAdjacentHTML('beforeend', messageHtml(m));
+    if (nearBottom || m.direction === 'out') box.scrollTop = box.scrollHeight;
+  }
+
+  const TICKS = { sent: '✓', delivered: '✓✓', read: '✓✓', failed: '⚠' };
+  function paintTick(el, status) { el.textContent = TICKS[status] || ''; el.className = 'tick ' + status; }
+
+  function messageHtml(m) {
+    const src = `/api/media/${encodeURIComponent(m.id)}`;
+    let inner = '';
+    if (m.type === 'image') inner += `<img class="media" loading="lazy" src="${src}" data-full="${src}" alt="${t('image_label')}" />`;
+    else if (m.type === 'audio') inner += `<audio controls preload="metadata" src="${src}"></audio>`;
+    else if (m.type === 'document') inner += `<a class="doc" href="${src}" target="_blank" rel="noopener">📄 <span>${esc(m.filename || t('file_label'))}</span></a>`;
+    if (m.body) inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
+    const tick = m.direction === 'out' ? `<span class="tick ${m.status}">${TICKS[m.status] || ''}</span>` : '';
+    return `<div class="msg ${m.direction}" data-id="${esc(m.id)}">${inner}<div class="meta"><span>${fmtTime(m.ts)}</span>${tick}</div></div>`;
+  }
+
+  $('back').addEventListener('click', () => { $('app').classList.remove('open'); state.active = null; renderContacts(); });
+
+  // ---------- Composer & Sending ----------
+  const ta = $('text');
+  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); } });
+
+  $('attach').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', () => {
+    const f = $('file').files[0];
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024) { alert(t('max_file_err')); $('file').value = ''; return; }
+    state.file = f;
+    $('preview-body').innerHTML = f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="" />` : `📄 ${esc(f.name)}`;
+    $('preview').classList.remove('hidden');
+  });
+
+  function clearAttachment() { state.file = null; $('file').value = ''; $('preview').classList.add('hidden'); }
+  $('preview-clear').addEventListener('click', clearAttachment);
+
+  document.addEventListener('paste', (e) => {
+    const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
+    if (f && state.active) {
+      const dt = new DataTransfer(); dt.items.add(f); $('file').files = dt.files;
+      $('file').dispatchEvent(new Event('change'));
+    }
+  });
+
+  $('composer').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!state.active) return;
+    const text = ta.value.trim();
+    if (!text && !state.file) return;
+    const fd = new FormData();
+    fd.append('text', text);
+    if (state.file) fd.append('file', state.file);
+    $('send').disabled = true;
+    try {
+      const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
+      if (row && !state.messages.some((x) => x.id === row.id)) { state.messages.push(row); appendMessage(row); }
+      ta.value = ''; ta.style.height = 'auto'; clearAttachment();
+      loadContacts();
+    } catch (err) {
+      $('messages').insertAdjacentHTML('beforeend', `<div class="msg-error" style="align-self:flex-end">${t('send_failed')} ${esc(err.message)}</div>`);
+      $('messages').scrollTop = $('messages').scrollHeight;
+    } finally { $('send').disabled = false; ta.focus(); }
+  });
+
+  // ---------- Image Viewer Modal ----------
+  let zoom = 1;
+  const setZoom = (z) => { zoom = Math.max(.5, Math.min(4, z)); $('viewer-img').style.transform = `scale(${zoom})`; };
+  const closeViewer = () => { $('viewer').classList.add('hidden'); setZoom(1); };
+  $('messages').addEventListener('click', (e) => {
+    const img = e.target.closest('img.media');
+    if (!img) return;
+    $('viewer-img').src = img.dataset.full; $('viewer-dl').href = img.dataset.full;
+    setZoom(1); $('viewer').classList.remove('hidden');
+  });
+  $('viewer-close').addEventListener('click', closeViewer);
+  $('viewer').addEventListener('click', (e) => { if (e.target.id === 'viewer') closeViewer(); });
+  $('zoom-in').addEventListener('click', () => setZoom(zoom + .25));
+  $('zoom-out').addEventListener('click', () => setZoom(zoom - .25));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeViewer(); });
+  $('viewer').addEventListener('wheel', (e) => { e.preventDefault(); setZoom(zoom + (e.deltaY < 0 ? .15 : -.15)); }, { passive: false });
+
+  // ---------- Modals Handling ----------
+  const openModal = (id) => $(id).classList.remove('hidden');
+  const closeModals = () => document.querySelectorAll('.modal').forEach((m) => m.classList.add('hidden'));
+  document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeModals));
+  document.querySelectorAll('.modal').forEach((m) => m.addEventListener('click', (e) => { if (e.target === m) closeModals(); }));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModals(); });
+  const jsonOpts = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  // New Chat
+  $('new-chat').addEventListener('click', () => {
+    $('new-line').innerHTML = state.lines.map((l) => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.id)})</option>`).join('');
+    if (state.line !== 'all' && state.lines.some((l) => l.id === state.line)) $('new-line').value = state.line;
+    $('new-error').textContent = '';
+    $('new-form').reset();
+    openModal('modal-new');
+    $('new-phone').focus();
+  });
+
+  $('new-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      const c = await api('/api/chats', jsonOpts('POST', { line: $('new-line').value, phone: $('new-phone').value, name: $('new-name').value }));
+      closeModals();
+      await loadContacts();
+      state.line = 'all'; renderContacts();
+      openChat(c.line, c.phone);
+    } catch (err) { $('new-error').textContent = err.message; }
+  });
+
+  // Templates
+  const tplByName = (n) => state.templates.find((tpl) => tpl.name === n);
+  function renderTplFields() {
+    const tpl = tplByName($('tpl-select').value);
+    if (!tpl) return;
+    const defaults = [state.active?.name || '', state.user.name];
+    $('tpl-params').innerHTML = tpl.params.map((p, i) =>
+      `<label>${esc(p)}<input data-param="${i}" value="${esc(defaults[i] || '')}" required /></label>`).join('');
+    updateTplPreview();
+  }
+  function tplValues() { return [...document.querySelectorAll('[data-param]')].map((i) => i.value); }
+  function updateTplPreview() {
+    const tpl = tplByName($('tpl-select').value), v = tplValues();
+    $('tpl-preview').textContent = tpl ? tpl.body.replace(/\{\{(\d+)\}\}/g, (_, i) => v[i - 1] || `{{${i}}}`) : '';
+  }
+  function openTemplateModal() {
+    if (!state.active) return;
+    if (!state.templates.length) { alert(t('no_templates_err')); return; }
+    $('tpl-select').innerHTML = state.templates.map((tpl) => `<option value="${esc(tpl.name)}">${esc(tpl.label || tpl.name)}</option>`).join('');
+    $('tpl-error').textContent = '';
+    renderTplFields();
+    openModal('modal-tpl');
+  }
+  $('tpl-select').addEventListener('change', renderTplFields);
+  $('tpl-params').addEventListener('input', updateTplPreview);
+  $('tpl-btn').addEventListener('click', openTemplateModal);
+  $('tpl-open').addEventListener('click', openTemplateModal);
+  $('tpl-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append('template', $('tpl-select').value);
+    fd.append('params', JSON.stringify(tplValues()));
+    try {
+      const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
+      closeModals();
+      if (row && !state.messages.some((x) => x.id === row.id)) { state.messages.push(row); appendMessage(row); }
+      loadContacts();
+    } catch (err) { $('tpl-error').textContent = err.message; }
+  });
+
+  // Staff Management (Admin)
+  function renderLineCheckboxes() {
+    const box = $('u-lines-checks');
+    if (!box) return;
+    box.innerHTML = (state.allLines || state.lines).map((l) => `
+      <label class="check-item">
+        <input type="checkbox" name="u_line" value="${esc(l.id)}" checked />
+        <span>${esc(l.name)}</span>
+      </label>
+    `).join('');
+  }
+
+  function userLinesPills(u) {
+    if (u.role === 'admin') return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span></div>`;
+    const allowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!allowed.length) return `<div class="user-lines-tags"><span class="line-pill none">${t('no_lines_allowed')}</span></div>`;
+    return `<div class="user-lines-tags">${allowed.map((id) => `<span class="line-pill">${esc(lineName(id))}</span>`).join('')}</div>`;
+  }
+
+  async function renderUsers() {
+    state.users = await api('/api/users');
+    renderLineCheckboxes();
+    $('users-list').innerHTML = state.users.map((u) => `
+      <div class="user-row ${u.active ? '' : 'off'}">
+        <div class="avatar" style="width:36px;height:36px;font-size:15px;background:hsl(${hue(u.username)} 45% 38%)">${esc(u.name.charAt(0))}</div>
+        <div class="u-info">
+          <div><strong>${esc(u.name)}</strong> ${u.role === 'admin' ? `<span class="role">${t('role_admin')}</span>` : ''} <small dir="ltr" style="display:inline">@${esc(u.username)}</small></div>
+          ${userLinesPills(u)}
+        </div>
+        <div class="user-actions">
+          <button class="btn ghost small" data-act="pw" data-id="${u.id}">${t('change_password')}</button>
+          ${u.role !== 'admin' ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
+          ${u.id !== state.user.id ? `<button class="btn ghost small" data-act="toggle" data-id="${u.id}">${u.active ? t('deactivate_btn') : t('activate_btn')}</button>` : ''}
+        </div>
+      </div>`).join('');
+  }
+
+  $('admin-btn').addEventListener('click', async () => {
+    $('admin-error').textContent = '';
+    await renderUsers();
+    openModal('modal-admin');
+  });
+
+  $('users-list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const u = state.users.find((x) => x.id === Number(b.dataset.id));
+    $('admin-error').textContent = '';
+    try {
+      if (b.dataset.act === 'pw') {
+        const password = prompt(`${t('new_pass_prompt')} ${u.name}:`);
+        if (!password) return;
+        if (password.length < 4) throw new Error(t('min_pass_err'));
+        await api(`/api/users/${u.id}`, jsonOpts('PATCH', { password }));
+      } else if (b.dataset.act === 'lines') {
+        const currentAllowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
+        const optionsText = (state.allLines || state.lines)
+          .map((l, i) => `${i + 1}: ${l.name} (${l.id}) [${currentAllowed.includes(l.id) ? t('enabled') : t('disabled')}]`)
+          .join('\n');
+        const promptMsg = `${t('select_lines_prompt')} (${u.name}):\n(1, 2, ...)\n\n${optionsText}`;
+        const input = prompt(promptMsg);
+        if (input === null) return;
+        const choices = input.split(/[,،]/).map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+        const allList = (state.allLines || state.lines);
+        const newAllowed = choices.map((c) => allList[c - 1]?.id).filter(Boolean);
+        await api(`/api/users/${u.id}`, jsonOpts('PATCH', { allowed_lines: newAllowed }));
+      } else {
+        await api(`/api/users/${u.id}`, jsonOpts('PATCH', { active: !u.active }));
+      }
+      await renderUsers();
+    } catch (err) { $('admin-error').textContent = err.message; }
+  });
+
+  $('user-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const checkedLines = [...document.querySelectorAll('input[name="u_line"]:checked')].map((i) => i.value);
+    if (!checkedLines.length) {
+      $('admin-error').textContent = t('require_one_line_err');
+      return;
+    }
+    try {
+      await api('/api/users', jsonOpts('POST', {
+        name: $('u-name').value,
+        username: $('u-username').value,
+        password: $('u-password').value,
+        allowed_lines: checkedLines,
+      }));
+      $('user-form').reset();
+      $('admin-error').textContent = '';
+      await renderUsers();
+    } catch (err) { $('admin-error').textContent = err.message; }
+  });
+
+  applyLanguage(curLang);
+  start();
+  showLoginIfNeeded();
+  function showLoginIfNeeded() { fetch('/api/me').then((r) => { if (r.status === 401) showLogin(); }); }
+})();

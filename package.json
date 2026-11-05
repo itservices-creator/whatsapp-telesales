@@ -1,0 +1,18 @@
+{
+  "name": "support-live-chat",
+  "version": "1.0.0",
+  "description": "Customer-support live chat interface for WhatsApp via Boostrify API",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "dev": "node --watch --env-file-if-exists=.env server/index.js",
+    "test": "node --test test/"
+  },
+  "engines": { "node": ">=22.5" },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.8.1"
+  }
+}

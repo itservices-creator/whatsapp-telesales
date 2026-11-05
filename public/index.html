@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>خدمة العملاء | Taager Live Chat</title>
+  <meta name="description" content="واجهة موظفي خدمة العملاء لاستقبال رسائل واتساب والرد عليها مباشرة عبر منصة تاجر." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login" class="login hidden">
+    <div class="login-lang-wrapper">
+      <button id="lang-toggle-login" class="lang-btn" type="button">🌐 English</button>
+    </div>
+    <form id="login-form" class="login-card">
+      <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="login-logo" />
+      <h1 data-i18n="login_title">خدمة العملاء</h1>
+      <p data-i18n="login_sub">سجّل الدخول للبدء في الرد على العملاء</p>
+      <input id="login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" autocapitalize="none" required />
+      <input id="login-password" type="password" placeholder="كلمة المرور" autocomplete="current-password" required />
+      <button id="login-submit" type="submit" data-i18n="login_btn">تسجيل الدخول</button>
+      <div id="login-error" class="error"></div>
+    </form>
+    <div class="login-footer" data-i18n="footer_text">© 2026 Taager.com • تم الإنشاء بواسطة فريق iTTaager Team</div>
+  </div>
+
+  <!-- Main App Layout -->
+  <main id="app" class="app hidden">
+    <aside class="sidebar" id="sidebar">
+      <header class="side-head">
+        <div class="brand-box">
+          <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="app-logo" />
+        </div>
+        <div class="head-actions">
+          <button id="lang-toggle-app" class="lang-btn" type="button">EN</button>
+          <button id="new-chat" class="icon-btn" title="محادثة جديدة" aria-label="محادثة جديدة">➕</button>
+          <button id="admin-btn" class="icon-btn hidden" title="إدارة الموظفين" aria-label="إدارة الموظفين">⚙️</button>
+          <button id="logout" class="icon-btn" title="خروج" aria-label="خروج">⏻</button>
+          <span id="conn" class="conn" title="حالة الاتصال"></span>
+        </div>
+      </header>
+      <div id="whoami" class="whoami"></div>
+      <div class="search"><input id="search" type="search" placeholder="ابحث بالاسم أو الرقم…" /></div>
+      <nav id="tabs" class="tabs" aria-label="أرقام الشركة"></nav>
+      <div id="demo-banner" class="demo-banner hidden" data-i18n="demo_banner">وضع تجريبي: بيانات وهمية بدون اتصال بـ Boostrify</div>
+      <ul id="contacts" class="contacts"></ul>
+      <footer class="sidebar-footer" data-i18n="footer_text">© 2026 Taager.com • تم الإنشاء بواسطة فريق iTTaager Team</footer>
+    </aside>
+
+    <section class="chat" id="chat">
+      <div id="empty" class="empty">
+        <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="empty-logo" />
+        <h2 data-i18n="empty_title">اختر محادثة للبدء</h2>
+        <p data-i18n="empty_sub">ستظهر رسائل العملاء هنا لحظة وصولها</p>
+      </div>
+
+      <div id="thread" class="thread hidden">
+        <header class="chat-head">
+          <button id="back" class="icon-btn back" aria-label="رجوع">➜</button>
+          <div id="head-avatar" class="avatar"></div>
+          <div>
+            <div id="head-name" class="name"></div>
+            <div id="head-phone" class="sub" dir="ltr"></div>
+            <div id="head-line" class="line-tag"></div>
+          </div>
+          <select id="owner-select" class="owner-select hidden" aria-label="الموظف المسؤول"></select>
+        </header>
+
+        <div id="messages" class="messages"></div>
+
+        <div id="preview" class="attach-preview hidden">
+          <div id="preview-body"></div>
+          <button id="preview-clear" class="icon-btn" aria-label="إلغاء المرفق">✕</button>
+        </div>
+
+        <div id="tpl-bar" class="tpl-bar hidden">
+          <span data-i18n="tpl_bar_text">⚠️ انتهت نافذة الـ 24 ساعة — البدء من جديد يتم بقالب رسالة معتمد</span>
+          <button id="tpl-open" class="btn" data-i18n="send_tpl_btn">إرسال قالب</button>
+        </div>
+
+        <form id="composer" class="composer">
+          <input id="file" type="file" accept="image/*,audio/*,application/pdf" hidden />
+          <button id="attach" type="button" class="icon-btn" aria-label="إرفاق ملف" title="إرفاق ملف">📎</button>
+          <button id="tpl-btn" type="button" class="icon-btn" aria-label="إرسال قالب" title="إرسال قالب">📋</button>
+          <textarea id="text" rows="1" placeholder="اكتب رسالة…"></textarea>
+          <button id="send" type="submit" class="send" aria-label="إرسال">➤</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- New chat Modal -->
+  <div id="modal-new" class="modal hidden" role="dialog" aria-label="محادثة جديدة">
+    <form id="new-form" class="modal-card">
+      <h3 data-i18n="new_chat_title">محادثة جديدة</h3>
+      <label><span data-i18n="new_chat_line_label">من أي رقم تريد المراسلة؟</span><select id="new-line"></select></label>
+      <label><span data-i18n="new_chat_phone_label">رقم العميل (صيغة دولية بدون +)</span><input id="new-phone" dir="ltr" inputmode="numeric" placeholder="966501234567" required /></label>
+      <label><span data-i18n="new_chat_name_label">اسم العميل (اختياري)</span><input id="new-name" placeholder="مثال: أحمد محمد" /></label>
+      <div id="new-error" class="error"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close data-i18n="cancel_btn">إلغاء</button>
+        <button type="submit" class="btn" data-i18n="start_chat_btn">بدء المحادثة</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Template picker Modal -->
+  <div id="modal-tpl" class="modal hidden" role="dialog" aria-label="إرسال قالب">
+    <form id="tpl-form" class="modal-card">
+      <h3 data-i18n="tpl_modal_title">إرسال قالب رسالة</h3>
+      <label><span data-i18n="tpl_select_label">القالب:</span><select id="tpl-select"></select></label>
+      <div id="tpl-params"></div>
+      <div id="tpl-preview" class="tpl-preview"></div>
+      <div id="tpl-error" class="error"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close data-i18n="cancel_btn">إلغاء</button>
+        <button type="submit" class="btn" data-i18n="send_btn">إرسال</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Admin Modal -->
+  <div id="modal-admin" class="modal hidden" role="dialog" aria-label="إدارة الموظفين">
+    <div class="modal-card wide">
+      <h3 data-i18n="admin_title">إدارة الموظفين وتخصيص أرقام الدول</h3>
+      <div id="users-list" class="users-list"></div>
+      <form id="user-form" class="user-form">
+        <h4 data-i18n="add_employee_title">إضافة موظف جديد</h4>
+        <div class="form-grid">
+          <input id="u-name" placeholder="الاسم (مثال: أحمد علي)" required />
+          <input id="u-username" dir="ltr" placeholder="اسم المستخدم (username)" autocapitalize="none" required />
+          <input id="u-password" dir="ltr" placeholder="كلمة المرور" required />
+        </div>
+        <div class="line-choices-box">
+          <span class="choice-title" data-i18n="allowed_lines_title">الأرقام المسموح له بالرد والإرسال منها:</span>
+          <div id="u-lines-checks" class="lines-checks"></div>
+        </div>
+        <button class="btn" type="submit" data-i18n="add_employee_btn">إضافة الموظف</button>
+      </form>
+      <div id="admin-error" class="error"></div>
+      <div class="modal-actions"><button type="button" class="btn ghost" data-close data-i18n="close_btn">إغلاق</button></div>
+    </div>
+  </div>
+
+  <!-- Image viewer Modal -->
+  <div id="viewer" class="viewer hidden" role="dialog" aria-label="عارض الصور">
+    <button id="viewer-close" class="viewer-close" aria-label="إغلاق">✕</button>
+    <div class="viewer-tools">
+      <button id="zoom-in" class="icon-btn">＋</button>
+      <button id="zoom-out" class="icon-btn">－</button>
+      <a id="viewer-dl" class="icon-btn" download>⬇</a>
+    </div>
+    <img id="viewer-img" alt="" />
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
