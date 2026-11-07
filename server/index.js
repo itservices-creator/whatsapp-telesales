@@ -360,23 +360,6 @@ app.get('/api/contacts/:line/:phone/messages', requireAuth, async (req, res) => 
 });
 
 async function makePublicMediaUrl(file) {
-  try {
-    const fileBytes = await readFile(file.path);
-    const form = new FormData();
-    form.append('file', new Blob([fileBytes], { type: file.mimetype }), file.originalname);
-    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
-      method: 'POST',
-      body: form,
-    });
-    const json = await res.json();
-    if (json?.data?.url) {
-      const direct = json.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
-      console.log('[Media Direct CDN URL]:', direct);
-      return direct;
-    }
-  } catch (err) {
-    console.warn('[CDN Upload failed, fallback to ngrok]:', err.message);
-  }
   return `${config.publicBaseUrl}/uploads/${file.filename}`;
 }
 
