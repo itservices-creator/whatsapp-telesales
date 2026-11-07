@@ -20,7 +20,7 @@
       <button id="lang-toggle-login" class="lang-btn" type="button">🌐 English</button>
     </div>
     <form id="login-form" class="login-card">
-      <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="login-logo" />
+      <img src="/taager-logo.svg" alt="Taager" class="login-logo" />
       <h1 data-i18n="login_title">خدمة العملاء</h1>
       <p data-i18n="login_sub">سجّل الدخول للبدء في الرد على العملاء</p>
       <input id="login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" autocapitalize="none"
@@ -37,7 +37,7 @@
     <aside class="sidebar" id="sidebar">
       <header class="side-head">
         <div class="brand-box">
-          <img src="whatsapp.taager.tech" alt="Taager" class="app-logo" />
+          <img src="/taager-logo.svg" alt="Taager" class="app-logo" />
         </div>
         <div class="head-actions">
           <button id="lang-toggle-app" class="lang-btn" type="button">EN</button>
@@ -59,7 +59,7 @@
 
     <section class="chat" id="chat">
       <div id="empty" class="empty">
-        <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="empty-logo" />
+        <img src="/taager-logo.svg" alt="Taager" class="empty-logo" />
         <h2 data-i18n="empty_title">اختر محادثة للبدء</h2>
         <p data-i18n="empty_sub">ستظهر رسائل العملاء هنا لحظة وصولها</p>
       </div>
@@ -88,9 +88,12 @@
           <button id="tpl-open" class="btn" data-i18n="send_tpl_btn">إرسال قالب</button>
         </div>
 
+        <div id="emoji-picker" class="emoji-picker hidden"></div>
+
         <form id="composer" class="composer">
           <input id="file" type="file" accept="image/*,audio/*,application/pdf" hidden />
           <button id="attach" type="button" class="icon-btn" aria-label="إرفاق ملف" title="إرفاق ملف">📎</button>
+          <button id="emoji-btn" type="button" class="icon-btn" aria-label="إيموجي" title="إيموجي">😀</button>
           <button id="tpl-btn" type="button" class="icon-btn" aria-label="إرسال قالب" title="إرسال قالب">📋</button>
           <textarea id="text" rows="1" placeholder="اكتب رسالة…"></textarea>
           <button id="send" type="submit" class="send" aria-label="إرسال">➤</button>

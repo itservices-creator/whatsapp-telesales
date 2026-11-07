@@ -446,6 +446,12 @@
   }
 
   const TICKS = { sent: '✓', delivered: '✓✓', read: '✓✓', failed: '⚠' };
+  const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '✅'];
+  const POPULAR_EMOJIS = [
+    '👍', '❤️', '😂', '🤣', '😊', '😍', '🥰', '😎', '🤩', '🤔',
+    '👏', '🙏', '🤝', '🔥', '💚', '✨', '💯', '⭐', '🎉', '🎁',
+    '🛍️', '📦', '🚚', '🏷️', '💳', '💵', '📞', '📍', '✅', '❌'
+  ];
   function paintTick(el, status) { el.textContent = TICKS[status] || ''; el.className = 'tick ' + status; }
 
   function messageHtml(m) {
@@ -454,9 +460,11 @@
     if (m.type === 'image' || m.type === 'sticker') inner += `<img class="media" loading="lazy" src="${src}" data-full="${src}" alt="${t('image_label')}" />`;
     else if (m.type === 'audio' || m.type === 'voice') inner += `<audio controls preload="metadata" src="${src}"></audio>`;
     else if (m.type === 'document') inner += `<a class="doc" href="${src}" target="_blank" rel="noopener">📄 <span>${esc(m.filename || t('file_label'))}</span></a>`;
-    if (m.body) inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
+    else if (m.type === 'reaction') inner += `<span class="reaction-pill">${esc(m.body || '❤️')}</span>`;
+    if (m.body && m.type !== 'reaction') inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
     const tick = m.direction === 'out' ? `<span class="tick ${m.status}">${TICKS[m.status] || ''}</span>` : '';
-    return `<div class="msg ${m.direction}" data-id="${esc(m.id)}">${inner}<div class="meta"><span>${fmtTime(m.ts)}</span>${tick}</div></div>`;
+    const reactBar = `<div class="msg-react-bar">${QUICK_REACTIONS.map((em) => `<button type="button" class="msg-react-btn" data-emoji="${em}" title="${em}">${em}</button>`).join('')}</div>`;
+    return `<div class="msg ${m.direction}" data-id="${esc(m.id)}">${reactBar}${inner}<div class="meta"><span>${fmtTime(m.ts)}</span>${tick}</div></div>`;
   }
 
   $('back').addEventListener('click', () => { $('app').classList.remove('open'); state.active = null; renderContacts(); });
@@ -465,6 +473,43 @@
   const ta = $('text');
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); } });
+
+  // ---------- Emoji Picker & Reactions ----------
+  const ep = $('emoji-picker');
+  if (ep) {
+    ep.innerHTML = POPULAR_EMOJIS.map((em) => `<button type="button" class="emoji-item" data-emoji="${em}">${em}</button>`).join('');
+    ep.addEventListener('click', (e) => {
+      const btn = e.target.closest('.emoji-item');
+      if (!btn) return;
+      const em = btn.dataset.emoji;
+      const start = ta.selectionStart, end = ta.selectionEnd;
+      ta.value = ta.value.substring(0, start) + em + ta.value.substring(end);
+      ta.selectionStart = ta.selectionEnd = start + em.length;
+      ta.focus();
+    });
+  }
+  $('emoji-btn')?.addEventListener('click', () => {
+    ep?.classList.toggle('hidden');
+  });
+
+  // Fast reaction from message hover toolbar
+  $('messages').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.msg-react-btn');
+    if (!btn || !state.active) return;
+    const emoji = btn.dataset.emoji;
+    const fd = new FormData();
+    fd.append('text', emoji);
+    try {
+      const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
+      if (row && !state.messages.some((x) => x.id === row.id)) {
+        state.messages.push(row);
+        appendMessage(row);
+      }
+      loadContacts();
+    } catch (err) {
+      alert(t('send_failed') + ' ' + err.message);
+    }
+  });
 
   $('attach').addEventListener('click', () => $('file').click());
   $('file').addEventListener('change', () => {
