@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,9 +8,11 @@
   <meta name="description" content="واجهة موظفي خدمة العملاء لاستقبال رسائل واتساب والرد عليها مباشرة عبر منصة تاجر." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <!-- Login Screen -->
   <div id="login" class="login hidden">
@@ -20,7 +23,8 @@
       <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="login-logo" />
       <h1 data-i18n="login_title">خدمة العملاء</h1>
       <p data-i18n="login_sub">سجّل الدخول للبدء في الرد على العملاء</p>
-      <input id="login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" autocapitalize="none" required />
+      <input id="login-username" type="text" placeholder="اسم المستخدم" autocomplete="username" autocapitalize="none"
+        required />
       <input id="login-password" type="password" placeholder="كلمة المرور" autocomplete="current-password" required />
       <button id="login-submit" type="submit" data-i18n="login_btn">تسجيل الدخول</button>
       <div id="login-error" class="error"></div>
@@ -33,7 +37,7 @@
     <aside class="sidebar" id="sidebar">
       <header class="side-head">
         <div class="brand-box">
-          <img src="https://taager.com/dist/taager-logo-C0Fv9eeU.webp" alt="Taager" class="app-logo" />
+          <img src="whatsapp.taager.tech" alt="Taager" class="app-logo" />
         </div>
         <div class="head-actions">
           <button id="lang-toggle-app" class="lang-btn" type="button">EN</button>
@@ -46,9 +50,11 @@
       <div id="whoami" class="whoami"></div>
       <div class="search"><input id="search" type="search" placeholder="ابحث بالاسم أو الرقم…" /></div>
       <nav id="tabs" class="tabs" aria-label="أرقام الشركة"></nav>
-      <div id="demo-banner" class="demo-banner hidden" data-i18n="demo_banner">وضع تجريبي: بيانات وهمية بدون اتصال بـ Boostrify</div>
+      <div id="demo-banner" class="demo-banner hidden" data-i18n="demo_banner">وضع تجريبي: بيانات وهمية بدون اتصال بـ
+        Boostrify</div>
       <ul id="contacts" class="contacts"></ul>
-      <footer class="sidebar-footer" data-i18n="footer_text">© 2026 Taager.com • تم الإنشاء بواسطة فريق iTTaager Team</footer>
+      <footer class="sidebar-footer" data-i18n="footer_text">© 2026 Taager.com • تم الإنشاء بواسطة فريق iTTaager Team
+      </footer>
     </aside>
 
     <section class="chat" id="chat">
@@ -97,9 +103,12 @@
   <div id="modal-new" class="modal hidden" role="dialog" aria-label="محادثة جديدة">
     <form id="new-form" class="modal-card">
       <h3 data-i18n="new_chat_title">محادثة جديدة</h3>
-      <label><span data-i18n="new_chat_line_label">من أي رقم تريد المراسلة؟</span><select id="new-line"></select></label>
-      <label><span data-i18n="new_chat_phone_label">رقم العميل (صيغة دولية بدون +)</span><input id="new-phone" dir="ltr" inputmode="numeric" placeholder="966501234567" required /></label>
-      <label><span data-i18n="new_chat_name_label">اسم العميل (اختياري)</span><input id="new-name" placeholder="مثال: أحمد محمد" /></label>
+      <label><span data-i18n="new_chat_line_label">من أي رقم تريد المراسلة؟</span><select
+          id="new-line"></select></label>
+      <label><span data-i18n="new_chat_phone_label">رقم العميل (صيغة دولية بدون +)</span><input id="new-phone" dir="ltr"
+          inputmode="numeric" placeholder="966501234567" required /></label>
+      <label><span data-i18n="new_chat_name_label">اسم العميل (اختياري)</span><input id="new-name"
+          placeholder="مثال: أحمد محمد" /></label>
       <div id="new-error" class="error"></div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close data-i18n="cancel_btn">إلغاء</button>
@@ -142,7 +151,8 @@
         <button class="btn" type="submit" data-i18n="add_employee_btn">إضافة الموظف</button>
       </form>
       <div id="admin-error" class="error"></div>
-      <div class="modal-actions"><button type="button" class="btn ghost" data-close data-i18n="close_btn">إغلاق</button></div>
+      <div class="modal-actions"><button type="button" class="btn ghost" data-close data-i18n="close_btn">إغلاق</button>
+      </div>
     </div>
   </div>
 
@@ -160,4 +170,5 @@
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 </body>
+
 </html>

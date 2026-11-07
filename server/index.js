@@ -105,21 +105,45 @@ function handleWebhook(body) {
     for (const ev of body.events) {
       const from = ev.customer?.phone || ev.from || ev.sender || ev.phone || ev.to;
       const custName = ev.customer?.name || ev.name || ev.sender_name || '';
-      const text = ev.text || ev.message || ev.body || (typeof ev.data === 'string' ? ev.data : '');
       const direction = ev.direction === 'out' || ev.from_me ? 'out' : 'in';
       const msgId = ev.wamid || String(ev.id) || `boost_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const line = String(ev.number_id || body.number_id || config.lines[0]?.id || '191');
       const ts = ev.created_at ? new Date(ev.created_at).getTime() : (ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now());
 
-      if (from && (text || ev.media_url)) {
+      // Boostrify sometimes encodes image metadata as a JSON string in the text field.
+      // Detect and unwrap it so we store a clean media_url instead of raw JSON text.
+      let rawText = ev.text || ev.message || ev.body || (typeof ev.data === 'string' ? ev.data : '');
+      let mediaUrl = ev.media_url || null;
+      let msgType = ev.type || 'text';
+
+      if (typeof rawText === 'string' && rawText.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(rawText);
+          // Boostrify image JSON: { mime_type, sha256, id, url, link, image: { link } }
+          const url = parsed.url || parsed.link || parsed.image?.link || parsed.header?.image?.link || null;
+          if (url && url.includes('lookaside.fbsbx.com')) {
+            mediaUrl = url;
+            msgType = 'image';
+            rawText = '';
+          }
+        } catch { /* not JSON, keep as-is */ }
+      }
+
+      // Also handle when ev.media_url is set directly (Boostrify newer format)
+      if (!mediaUrl && ev.media_url) mediaUrl = ev.media_url;
+      if (mediaUrl && msgType === 'text') msgType = 'image';
+
+      const text = rawText;
+
+      if (from && (text || mediaUrl)) {
         const row = saveMessage({
           id: msgId,
           line,
           phone: from,
           direction,
-          type: ev.media_url ? (ev.type || 'image') : 'text',
+          type: msgType,
           body: text,
-          media_url: ev.media_url,
+          media_url: mediaUrl,
           ts,
         }, custName);
         if (row) {
@@ -345,6 +369,29 @@ app.get('/api/media/:id', requireAuth, async (req, res) => {
         const localPath = resolve(UPLOAD_DIR, m.media_url.replace('/uploads/', ''));
         return res.sendFile(localPath);
       }
+      // Proxy external URLs (e.g. lookaside.fbsbx.com) through the server so the browser
+      // doesn't need to authenticate with Facebook/Meta directly.
+      try {
+        const upstream = await fetch(m.media_url, {
+          headers: {
+            'User-Agent': 'WhatsappBot/1.0',
+            'Accept': 'image/*,*/*',
+          },
+          redirect: 'follow',
+        });
+        if (upstream.ok) {
+          const ct = upstream.headers.get('content-type') || m.mime || 'image/jpeg';
+          res.setHeader('Content-Type', ct);
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+          const len = upstream.headers.get('content-length');
+          if (len) res.setHeader('Content-Length', len);
+          return void (await pipeline(Readable.fromWeb(upstream.body), res));
+        }
+        console.warn('[media proxy] upstream responded', upstream.status, 'for', m.media_url);
+      } catch (proxyErr) {
+        console.warn('[media proxy] fetch failed:', proxyErr.message);
+      }
+      // Fallback: redirect directly (better than a broken image)
       return res.redirect(m.media_url);
     }
     res.sendStatus(404);
