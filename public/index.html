@@ -97,7 +97,14 @@
           <button id="attach" type="button" class="icon-btn" aria-label="إرفاق ملف" title="إرفاق ملف">📎</button>
           <button id="emoji-btn" type="button" class="icon-btn" aria-label="إيموجي" title="إيموجي">😀</button>
           <button id="tpl-btn" type="button" class="icon-btn" aria-label="إرسال قالب" title="إرسال قالب">📋</button>
+          <button id="mic-btn" type="button" class="icon-btn mic-btn" aria-label="تسجيل صوتي" title="تسجيل صوتي">🎙️</button>
           <textarea id="text" rows="1" placeholder="اكتب رسالة…"></textarea>
+          <div id="recording-bar" class="recording-bar hidden">
+            <span class="rec-dot"></span>
+            <span id="rec-timer" class="rec-timer">0:00</span>
+            <span class="rec-label">جاري التسجيل… اضغط إرسال للإنهاء</span>
+            <button id="rec-cancel" type="button" class="icon-btn rec-cancel-btn" title="إلغاء التسجيل">🗑️</button>
+          </div>
           <button id="send" type="submit" class="send" aria-label="إرسال">➤</button>
         </form>
       </div>

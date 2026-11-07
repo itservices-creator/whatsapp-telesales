@@ -524,6 +524,122 @@
   function clearAttachment() { state.file = null; $('file').value = ''; $('preview').classList.add('hidden'); }
   $('preview-clear').addEventListener('click', clearAttachment);
 
+  // ---------- Voice Note Recording ----------
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordTimerInterval = null;
+  let recordSeconds = 0;
+  let activeStream = null;
+
+  function stopRecordingTracks() {
+    if (activeStream) {
+      activeStream.getTracks().forEach((tr) => tr.stop());
+      activeStream = null;
+    }
+    if (recordTimerInterval) {
+      clearInterval(recordTimerInterval);
+      recordTimerInterval = null;
+    }
+  }
+
+  function resetRecordingUI() {
+    stopRecordingTracks();
+    mediaRecorder = null;
+    audioChunks = [];
+    recordSeconds = 0;
+    $('composer').classList.remove('is-recording');
+    $('recording-bar').classList.add('hidden');
+    $('text').classList.remove('hidden');
+    $('send').innerHTML = '➤';
+    $('send').title = 'إرسال';
+  }
+
+  async function startRecording() {
+    if (!state.active) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      activeStream = stream;
+
+      const mime = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        .find((m) => MediaRecorder.isTypeSupported(m)) || '';
+
+      mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        if (!audioChunks.length) {
+          resetRecordingUI();
+          return;
+        }
+        const mimeType = mediaRecorder.mimeType || 'audio/ogg';
+        const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'mp4' : 'ogg';
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        resetRecordingUI();
+
+        const fd = new FormData();
+        fd.append('file', audioBlob, `voice_${Date.now()}.${ext}`);
+        fd.append('text', '');
+        $('send').disabled = true;
+        try {
+          const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
+          if (row && !state.messages.some((x) => x.id === row.id)) {
+            state.messages.push(row);
+            appendMessage(row);
+          }
+          loadContacts();
+        } catch (err) {
+          alert((t('send_failed') || 'فشل الإرسال:') + ' ' + err.message);
+        } finally {
+          $('send').disabled = false;
+        }
+      };
+
+      mediaRecorder.start(250);
+      recordSeconds = 0;
+      $('rec-timer').textContent = '0:00';
+      $('composer').classList.add('is-recording');
+      $('text').classList.add('hidden');
+      $('recording-bar').classList.remove('hidden');
+      $('send').innerHTML = '✔';
+      $('send').title = 'إنهاء وإرسال التسجيل';
+
+      recordTimerInterval = setInterval(() => {
+        recordSeconds++;
+        const m = Math.floor(recordSeconds / 60);
+        const s = recordSeconds % 60;
+        $('rec-timer').textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+      }, 1000);
+
+    } catch (err) {
+      console.error('Microphone error:', err);
+      alert('تعذر الوصول إلى الميكروفون. يرجى السماح بالوصول من إعدادات المتصفح.');
+      resetRecordingUI();
+    }
+  }
+
+  $('mic-btn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    } else {
+      startRecording();
+    }
+  });
+
+  $('rec-cancel')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    audioChunks = [];
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+    } else {
+      resetRecordingUI();
+    }
+  });
+
   document.addEventListener('paste', (e) => {
     const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
     if (f && state.active) {
@@ -535,6 +651,10 @@
   $('composer').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!state.active) return;
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      return;
+    }
     const text = ta.value.trim();
     if (!text && !state.file) return;
     const fd = new FormData();

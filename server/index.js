@@ -363,11 +363,42 @@ app.get('/api/contacts/:line/:phone/messages', requireAuth, async (req, res) => 
 app.get('/v/:filename', (req, res) => {
   const filename = req.params.filename;
   const fileUrl = `${config.publicBaseUrl}/uploads/${filename}`;
+  const isAudio = /\.(ogg|webm|mp3|m4a|wav)$/i.test(filename);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  if (isAudio) {
+    return res.send(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WAFY Store 🎤 رسالة صوتية</title>
+  <meta property="og:title" content="WAFY Store 🎤 رسالة صوتية" />
+  <meta property="og:description" content="اضغط للاستماع للرسالة الصوتية" />
+  <meta property="og:type" content="music.song" />
+  <style>
+    body { margin:0; background:#0b141a; color:#e9edef; font-family:system-ui,-apple-system,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; box-sizing:border-box; }
+    .card { background:#111b21; border:1px solid #202c33; border-radius:18px; padding:28px 24px; max-width:400px; width:100%; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,0.5); }
+    .icon { font-size:48px; margin-bottom:12px; }
+    h2 { font-size:18px; margin:0 0 6px; color:#00a884; }
+    p { font-size:13px; color:#8696a0; margin:0 0 20px; }
+    audio { width:100%; outline:none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🎙️</div>
+    <h2>WAFY Store</h2>
+    <p>رسالة صوتية من خدمة العملاء</p>
+    <audio controls autoplay src="${fileUrl}"></audio>
+  </div>
+</body>
+</html>`);
+  }
   res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>WAFY Store 🛍️</title>
   <meta property="og:title" content="WAFY Store 🛍️" />
   <meta property="og:description" content="اضغط لمشاهدة الصورة" />
