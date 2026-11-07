@@ -209,6 +209,20 @@ async function handleWebhook(body) {
           refreshAll();
         }
       }
+
+      // If this is a media message, Boostrify processes and stores it permanently on boostrify.pro/uploads
+      // within 1-2 seconds. Schedule a background sync to fetch the clean permanent media_url.
+      if (from && (msgType === 'image' || msgType === 'audio' || msgType === 'sticker' || msgType === 'voice' || (mediaUrl && mediaUrl.includes('lookaside.fbsbx.com')))) {
+        setTimeout(async () => {
+          try {
+            const items = await fetchHistory(line, from);
+            for (const item of items) saveMessage(item, '');
+            refreshAll();
+          } catch (e) {
+            console.warn('[Delayed media sync error]:', e.message);
+          }
+        }, 2500);
+      }
       if (ev.status && ev.id) {
         const u = updateStatus(String(ev.id), ev.status) || (ev.wamid && updateStatus(ev.wamid, ev.status));
         if (u) emitFor('status', u, u.line, u.phone);
@@ -334,7 +348,7 @@ app.get('/api/contacts/:line/:phone/messages', requireAuth, async (req, res) => 
   const contact = getContact(line, phone);
   if (!canAccess(req.user, contact)) return res.sendStatus(403);
   // Sync history from Boostrify on open (best-effort; local cache is the fallback).
-  if (!config.demo && config.boostrify.key && req.query.sync !== '0') {
+  if (!config.demo && (config.boostrify.key || config.boostrify.appKey) && req.query.sync !== '0') {
     try {
       for (const m of await fetchHistory(line, phone)) saveMessage(m, '');
     } catch (err) {
@@ -410,9 +424,25 @@ app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), 
 
 // Media: direct URLs are redirected (pass-through); media ids are proxied with auth, never stored.
 app.get('/api/media/:id', requireAuth, async (req, res) => {
-  const m = getMessage(req.params.id);
+  let m = getMessage(req.params.id);
   if (!m) return res.sendStatus(404);
   if (!canAccess(req.user, getContact(m.line, m.phone))) return res.sendStatus(403);
+
+  // If the media_url points to lookaside.fbsbx.com, it expires quickly and returns 401 without Meta auth.
+  // Resolve the permanent boostrify.pro URL by syncing the latest conversation messages.
+  if (m.media_url && m.media_url.includes('lookaside.fbsbx.com')) {
+    try {
+      const items = await fetchHistory(m.line, m.phone);
+      for (const item of items) saveMessage(item, '');
+      const fresh = getMessage(req.params.id);
+      if (fresh && fresh.media_url && !fresh.media_url.includes('lookaside.fbsbx.com')) {
+        m = fresh;
+      }
+    } catch (err) {
+      console.warn('[media sync fallback error]:', err.message);
+    }
+  }
+
   try {
     if (m.media_id) {
       const upstream = await fetchMedia(m.media_id);
@@ -427,20 +457,19 @@ app.get('/api/media/:id', requireAuth, async (req, res) => {
         const localPath = resolve(UPLOAD_DIR, m.media_url.replace('/uploads/', ''));
         return res.sendFile(localPath);
       }
-      // Proxy external URLs (e.g. lookaside.fbsbx.com) through the server so the browser
-      // doesn't need to authenticate with Facebook/Meta directly.
+      // Proxy external URLs (e.g. boostrify.pro/uploads or CDN) through our server
       try {
         const upstream = await fetch(m.media_url, {
           headers: {
-            'User-Agent': 'WhatsappBot/1.0',
-            'Accept': 'image/*,*/*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': '*/*',
           },
           redirect: 'follow',
         });
         if (upstream.ok) {
-          const ct = upstream.headers.get('content-type') || m.mime || 'image/jpeg';
+          const ct = upstream.headers.get('content-type') || m.mime || 'application/octet-stream';
           res.setHeader('Content-Type', ct);
-          res.setHeader('Cache-Control', 'public, max-age=3600');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
           const len = upstream.headers.get('content-length');
           if (len) res.setHeader('Content-Length', len);
           return void (await pipeline(Readable.fromWeb(upstream.body), res));
@@ -449,7 +478,7 @@ app.get('/api/media/:id', requireAuth, async (req, res) => {
       } catch (proxyErr) {
         console.warn('[media proxy] fetch failed:', proxyErr.message);
       }
-      // Fallback: redirect directly (better than a broken image)
+      // Fallback: redirect directly
       return res.redirect(m.media_url);
     }
     res.sendStatus(404);

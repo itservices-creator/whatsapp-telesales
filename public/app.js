@@ -451,8 +451,8 @@
   function messageHtml(m) {
     const src = `/api/media/${encodeURIComponent(m.id)}`;
     let inner = '';
-    if (m.type === 'image') inner += `<img class="media" loading="lazy" src="${src}" data-full="${src}" alt="${t('image_label')}" />`;
-    else if (m.type === 'audio') inner += `<audio controls preload="metadata" src="${src}"></audio>`;
+    if (m.type === 'image' || m.type === 'sticker') inner += `<img class="media" loading="lazy" src="${src}" data-full="${src}" alt="${t('image_label')}" />`;
+    else if (m.type === 'audio' || m.type === 'voice') inner += `<audio controls preload="metadata" src="${src}"></audio>`;
     else if (m.type === 'document') inner += `<a class="doc" href="${src}" target="_blank" rel="noopener">📄 <span>${esc(m.filename || t('file_label'))}</span></a>`;
     if (m.body) inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
     const tick = m.direction === 'out' ? `<span class="tick ${m.status}">${TICKS[m.status] || ''}</span>` : '';

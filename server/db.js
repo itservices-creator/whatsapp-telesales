@@ -36,8 +36,16 @@ const previewOf = (m) =>
 
 /** Insert a message (idempotent on id) and update the contact row. Returns the stored row, or null if duplicate. */
 export function saveMessage(m, contactName) {
-  const exists = db.prepare('SELECT 1 FROM messages WHERE id = ?').get(m.id);
-  if (exists) return null;
+  const existing = db.prepare('SELECT id, type, media_url, body FROM messages WHERE id = ?').get(m.id);
+  if (existing) {
+    // If incoming has a valid media_url and existing is broken/missing, update it
+    if (m.media_url && (!existing.media_url || existing.media_url.includes('lookaside.fbsbx.com'))) {
+      db.prepare('UPDATE messages SET media_url = ?, type = ?, body = ? WHERE id = ?')
+        .run(m.media_url, m.type || existing.type, m.body || '', m.id);
+      return db.prepare('SELECT * FROM messages WHERE id = ?').get(m.id);
+    }
+    return null;
+  }
   db.prepare(
     `INSERT INTO messages (id, line, phone, direction, type, body, media_url, media_id, mime, filename, status, ts)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,

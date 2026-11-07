@@ -71,8 +71,72 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filename }) 
   return data?.messages?.[0]?.id || data?.id || data?.message_id || `local_${Date.now()}`;
 }
 
+const conversationIdCache = new Map();
+
+/** Get Boostrify conversation ID by customer phone */
+export async function getConversationId(phone) {
+  const clean = String(phone).replace(/\D/g, '');
+  if (conversationIdCache.has(clean)) return conversationIdCache.get(clean);
+  try {
+    const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01`);
+    const json = await res.json();
+    for (const c of json?.data || []) {
+      const p = String(c.customer?.phone || '').replace(/\D/g, '');
+      if (p && c.id) conversationIdCache.set(p, c.id);
+    }
+    return conversationIdCache.get(clean) || null;
+  } catch (err) {
+    console.warn('[getConversationId] failed:', err.message);
+    return null;
+  }
+}
+
 /** Pull message history for a contact. Returns array of normalized messages (see normalizeHistoryItem). */
 export async function fetchHistory(line, contact) {
+  if (b.appKey && b.authKey) {
+    const convId = await getConversationId(contact);
+    if (!convId) return [];
+    try {
+      const res = await call(`${b.base}/whatsapp/v1/conversations/${convId}/messages`);
+      const data = await res.json();
+      const items = data.data || [];
+      return items.map((i) => {
+        const id = i.wamid || String(i.id);
+        const ts = i.created_at ? new Date(i.created_at).getTime() : Date.now();
+        const direction = i.direction === 'out' || i.from_me ? 'out' : 'in';
+        let type = i.type || 'text';
+        if (type === 'sticker') type = 'image';
+        let media_url = i.media_url;
+        let body = i.text || '';
+        if (typeof body === 'string' && body.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(body);
+            if (parsed.url || parsed.link) {
+              if (!media_url || media_url.includes('lookaside.fbsbx.com')) {
+                media_url = parsed.url || parsed.link;
+              }
+              body = '';
+            }
+          } catch {}
+        }
+        return {
+          id,
+          line,
+          phone: contact,
+          direction,
+          type,
+          body,
+          media_url,
+          status: i.status || 'sent',
+          ts,
+        };
+      }).filter(Boolean);
+    } catch (err) {
+      console.warn('[fetchHistory] failed for convId', convId, err.message);
+      return [];
+    }
+  }
+
   const res = await call(url(b.historyPath, { phone: line, contact }));
   const data = await res.json();
   const items = data.data || data.messages || data.results || (Array.isArray(data) ? data : []);
