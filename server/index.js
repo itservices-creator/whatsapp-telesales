@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, createWriteStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -30,6 +30,40 @@ const renderTemplate = (t, params) => t.body.replace(/\{\{(\d+)\}\}/g, (_, i) =>
 
 const UPLOAD_DIR = resolve('data/uploads');
 mkdirSync(UPLOAD_DIR, { recursive: true });
+
+/**
+ * Download a remote media URL (e.g. from lookaside.fbsbx.com) and save it locally.
+ * Returns the local /uploads/<filename> path, or null on failure.
+ */
+async function downloadMedia(url, mimeHint) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'WhatsappBot/1.0', Accept: 'image/*,audio/*,video/*,*/*' },
+      redirect: 'follow',
+    });
+    if (!res.ok) {
+      console.warn('[downloadMedia] upstream', res.status, url.slice(0, 80));
+      return null;
+    }
+    const ct = res.headers.get('content-type') || mimeHint || 'application/octet-stream';
+    // Derive a file extension from content-type
+    const extMap = {
+      'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+      'image/gif': 'gif', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a',
+      'audio/wav': 'wav', 'video/mp4': 'mp4', 'application/pdf': 'pdf',
+    };
+    const baseType = ct.split(';')[0].trim().toLowerCase();
+    const ext = extMap[baseType] || baseType.split('/')[1] || 'bin';
+    const filename = `${randomBytes(12).toString('hex')}.${ext}`;
+    const filePath = resolve(UPLOAD_DIR, filename);
+    await pipeline(Readable.fromWeb(res.body), createWriteStream(filePath));
+    console.log('[downloadMedia] saved:', filename, '(', ct, ')');
+    return `/uploads/${filename}`;
+  } catch (err) {
+    console.warn('[downloadMedia] failed:', err.message, url.slice(0, 80));
+    return null;
+  }
+}
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
@@ -87,7 +121,7 @@ const handleWebhookPost = (req, res) => {
   try {
     const parsed = JSON.parse(raw.toString('utf8'));
     console.log('[Webhook] Received:', JSON.stringify(parsed));
-    handleWebhook(parsed);
+    handleWebhook(parsed).catch((err) => console.error('webhook async error', err));
   } catch (err) {
     console.error('webhook error', err);
   }
@@ -99,7 +133,7 @@ app.get('/webhooks/boostrify', handleWebhookGet);
 app.post('/webhook', express.raw({ type: '*/*', limit: '5mb' }), handleWebhookPost);
 app.post('/webhooks/boostrify', express.raw({ type: '*/*', limit: '5mb' }), handleWebhookPost);
 
-function handleWebhook(body) {
+async function handleWebhook(body) {
   // 1. Boostrify native events format ($data['events'])
   if (Array.isArray(body.events)) {
     for (const ev of body.events) {
@@ -110,20 +144,33 @@ function handleWebhook(body) {
       const line = String(ev.number_id || body.number_id || config.lines[0]?.id || '191');
       const ts = ev.created_at ? new Date(ev.created_at).getTime() : (ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now());
 
-      // Boostrify sometimes encodes image metadata as a JSON string in the text field.
-      // Detect and unwrap it so we store a clean media_url instead of raw JSON text.
+      // Boostrify sometimes encodes media metadata as a JSON string in the text field.
+      // Detect and unwrap it to extract the actual URL and mime type.
       let rawText = ev.text || ev.message || ev.body || (typeof ev.data === 'string' ? ev.data : '');
       let mediaUrl = ev.media_url || null;
+      let mimeHint = ev.mime_type || null;
       let msgType = ev.type || 'text';
 
       if (typeof rawText === 'string' && rawText.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(rawText);
-          // Boostrify image JSON: { mime_type, sha256, id, url, link, image: { link } }
-          const url = parsed.url || parsed.link || parsed.image?.link || parsed.header?.image?.link || null;
-          if (url && url.includes('lookaside.fbsbx.com')) {
+          // Boostrify wraps media as: { mime_type, sha256, id, url, link, image/audio/video: { link } }
+          const url = parsed.url || parsed.link
+            || parsed.image?.link || parsed.audio?.link || parsed.video?.link
+            || parsed.header?.image?.link || null;
+          const mime = parsed.mime_type || null;
+          if (url && (url.includes('lookaside.fbsbx.com') || url.includes('cdn') || url.startsWith('http'))) {
             mediaUrl = url;
-            msgType = 'image';
+            mimeHint = mime || mimeHint;
+            // Determine type from mime
+            if (mime) {
+              if (mime.startsWith('image/')) msgType = 'image';
+              else if (mime.startsWith('audio/')) msgType = 'audio';
+              else if (mime.startsWith('video/')) msgType = 'video';
+              else msgType = 'document';
+            } else {
+              msgType = 'image'; // default fallback
+            }
             rawText = '';
           }
         } catch { /* not JSON, keep as-is */ }
@@ -131,7 +178,18 @@ function handleWebhook(body) {
 
       // Also handle when ev.media_url is set directly (Boostrify newer format)
       if (!mediaUrl && ev.media_url) mediaUrl = ev.media_url;
-      if (mediaUrl && msgType === 'text') msgType = 'image';
+      if (mediaUrl && msgType === 'text') {
+        // Guess type from mime or URL
+        if (mimeHint?.startsWith('audio/')) msgType = 'audio';
+        else if (mimeHint?.startsWith('video/')) msgType = 'video';
+        else msgType = 'image';
+      }
+
+      // *** Download and save media locally immediately so URLs don't expire ***
+      if (mediaUrl && mediaUrl.startsWith('http')) {
+        const localPath = await downloadMedia(mediaUrl, mimeHint);
+        if (localPath) mediaUrl = localPath;
+      }
 
       const text = rawText;
 
