@@ -38,7 +38,8 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filename }) 
 
     if (mediaUrl) {
       payload.media_url = mediaUrl;
-      // In WhatsApp, sending the direct media URL ensures the customer receives the image with preview card
+      payload.preview_url = true;
+      // In WhatsApp, sending the preview URL generates the rich image card on customer's phone
       payload.message = (body && body.trim()) ? `${body.trim()}\n${mediaUrl}` : mediaUrl;
     } else {
       payload.message = body || '';

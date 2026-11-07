@@ -359,8 +359,32 @@ app.get('/api/contacts/:line/:phone/messages', requireAuth, async (req, res) => 
   res.json({ messages: listMessages(line, phone), windowOpen: windowOpen(line, phone), contact: getContact(line, phone) });
 });
 
+// Public rich preview page for shared media on WhatsApp
+app.get('/v/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const fileUrl = `${config.publicBaseUrl}/uploads/${filename}`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>WAFY Store 🛍️</title>
+  <meta property="og:title" content="WAFY Store 🛍️" />
+  <meta property="og:description" content="اضغط لمشاهدة الصورة" />
+  <meta property="og:image" content="${fileUrl}" />
+  <meta property="og:image:secure_url" content="${fileUrl}" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="${fileUrl}" />
+</head>
+<body style="margin:0;background:#0b141a;display:flex;align-items:center;justify-content:center;height:100vh;">
+  <img src="${fileUrl}" alt="WAFY Store" style="max-width:96%;max-height:96vh;object-fit:contain;border-radius:8px;" />
+</body>
+</html>`);
+});
+
 async function makePublicMediaUrl(file) {
-  return `${config.publicBaseUrl}/uploads/${file.filename}`;
+  return `${config.publicBaseUrl}/v/${file.filename}`;
 }
 
 app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), async (req, res) => {
