@@ -445,7 +445,7 @@
     if (nearBottom || m.direction === 'out') box.scrollTop = box.scrollHeight;
   }
 
-  const TICKS = { sent: '✓', delivered: '✓✓', read: '✓✓', failed: '⚠' };
+  const TICKS = { sending: '🕒', sent: '✓', delivered: '✓✓', read: '✓✓', failed: '⚠' };
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '✅'];
   const POPULAR_EMOJIS = [
     '👍', '❤️', '😂', '🤣', '😊', '😍', '🥰', '😎', '🤩', '🤔',
@@ -455,10 +455,11 @@
   function paintTick(el, status) { el.textContent = TICKS[status] || ''; el.className = 'tick ' + status; }
 
   function messageHtml(m) {
-    const src = `/api/media/${encodeURIComponent(m.id)}`;
+    const src = (m.media_url && m.media_url.startsWith('blob:')) ? m.media_url : `/api/media/${encodeURIComponent(m.id)}`;
     let inner = '';
     if (m.type === 'image' || m.type === 'sticker') inner += `<img class="media" loading="lazy" src="${src}" data-full="${src}" alt="${t('image_label')}" />`;
     else if (m.type === 'audio' || m.type === 'voice') inner += `<audio controls preload="metadata" src="${src}"></audio>`;
+    else if (m.type === 'video') inner += `<video controls preload="metadata" src="${src}" style="max-width:100%;max-height:300px;border-radius:8px;display:block"></video>`;
     else if (m.type === 'document') inner += `<a class="doc" href="${src}" target="_blank" rel="noopener">📄 <span>${esc(m.filename || t('file_label'))}</span></a>`;
     else if (m.type === 'reaction') inner += `<span class="reaction-pill">${esc(m.body || '❤️')}</span>`;
     if (m.body && m.type !== 'reaction') inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
@@ -580,21 +581,50 @@
         const audioBlob = new Blob(audioChunks, { type: mimeType });
         resetRecordingUI();
 
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const blobUrl = URL.createObjectURL(audioBlob);
+
+        // Optimistic UI: audio bubble appears on screen immediately!
+        const optMsg = {
+          id: tempId,
+          line: state.active.line,
+          phone: state.active.phone,
+          direction: 'out',
+          type: 'audio',
+          body: '',
+          media_url: blobUrl,
+          filename: `voice_${Date.now()}.${ext}`,
+          status: 'sending',
+          ts: Date.now(),
+        };
+        state.messages.push(optMsg);
+        appendMessage(optMsg);
+
         const fd = new FormData();
         fd.append('file', audioBlob, `voice_${Date.now()}.${ext}`);
+        fd.append('type', 'audio');
         fd.append('text', '');
-        $('send').disabled = true;
+
         try {
           const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
-          if (row && !state.messages.some((x) => x.id === row.id)) {
-            state.messages.push(row);
-            appendMessage(row);
+          if (row) {
+            const idx = state.messages.findIndex((m) => m.id === tempId);
+            if (idx >= 0) state.messages[idx] = row;
+            const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+            if (el) {
+              el.dataset.id = row.id;
+              const tick = el.querySelector('.tick');
+              if (tick) paintTick(tick, row.status || 'sent');
+            }
           }
           loadContacts();
         } catch (err) {
-          alert((t('send_failed') || 'فشل الإرسال:') + ' ' + err.message);
-        } finally {
-          $('send').disabled = false;
+          const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+          if (el) {
+            const tick = el.querySelector('.tick');
+            if (tick) paintTick(tick, 'failed');
+            el.insertAdjacentHTML('beforeend', `<div class="msg-error" style="color:var(--danger);font-size:11px;margin-top:2px;">${esc(err.message)}</div>`);
+          }
         }
       };
 
@@ -657,19 +687,71 @@
     }
     const text = ta.value.trim();
     if (!text && !state.file) return;
+
+    const fileToSend = state.file;
+    const textToSend = text;
+
+    // Reset input immediately (instant feedback to user!)
+    ta.value = '';
+    ta.style.height = 'auto';
+    clearAttachment();
+
+    // Optimistic UI bubble
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    let optType = 'text';
+    if (fileToSend) {
+      const mime = fileToSend.type || '';
+      if (mime.startsWith('image/')) optType = 'image';
+      else if (mime.startsWith('video/') || /\.(mp4|mov|avi|3gp|mkv)$/i.test(fileToSend.name)) optType = 'video';
+      else if (mime.startsWith('audio/') || /\.(ogg|mp3|m4a|wav|webm)$/i.test(fileToSend.name)) optType = 'audio';
+      else optType = 'document';
+    }
+
+    const optMsg = {
+      id: tempId,
+      line: state.active.line,
+      phone: state.active.phone,
+      direction: 'out',
+      type: optType,
+      body: textToSend,
+      media_url: fileToSend ? URL.createObjectURL(fileToSend) : null,
+      filename: fileToSend ? fileToSend.name : null,
+      status: 'sending',
+      ts: Date.now(),
+    };
+    state.messages.push(optMsg);
+    appendMessage(optMsg);
+
     const fd = new FormData();
-    fd.append('text', text);
-    if (state.file) fd.append('file', state.file);
-    $('send').disabled = true;
+    fd.append('text', textToSend);
+    if (fileToSend) {
+      fd.append('file', fileToSend);
+      fd.append('type', optType);
+    }
+
     try {
       const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
-      if (row && !state.messages.some((x) => x.id === row.id)) { state.messages.push(row); appendMessage(row); }
-      ta.value = ''; ta.style.height = 'auto'; clearAttachment();
+      if (row) {
+        const idx = state.messages.findIndex((m) => m.id === tempId);
+        if (idx >= 0) state.messages[idx] = row;
+        const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+        if (el) {
+          el.dataset.id = row.id;
+          const tick = el.querySelector('.tick');
+          if (tick) paintTick(tick, row.status || 'sent');
+        }
+      }
       loadContacts();
     } catch (err) {
-      $('messages').insertAdjacentHTML('beforeend', `<div class="msg-error" style="align-self:flex-end">${t('send_failed')} ${esc(err.message)}</div>`);
-      $('messages').scrollTop = $('messages').scrollHeight;
-    } finally { $('send').disabled = false; ta.focus(); }
+      const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+      if (el) {
+        const tick = el.querySelector('.tick');
+        if (tick) paintTick(tick, 'failed');
+        el.insertAdjacentHTML('beforeend', `<div class="msg-error" style="color:var(--danger);font-size:11px;margin-top:2px;">${esc(err.message)}</div>`);
+      }
+    } finally {
+      ta.focus();
+    }
   });
 
   // ---------- Image Viewer Modal ----------

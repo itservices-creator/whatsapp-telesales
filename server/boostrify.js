@@ -119,7 +119,13 @@ async function sendNativeMedia({ to, type, mediaUrl, caption }) {
     return null;
   }
 
-  const mediaType = type === 'audio' || /\.(ogg|mp3|m4a|wav|webm)/i.test(directUrl) ? 'audio' : 'image';
+  let mediaType = type;
+  if (!mediaType || mediaType === 'document') {
+    if (/\.(mp4|mov|avi|3gp|mkv)$/i.test(directUrl)) mediaType = 'video';
+    else if (/\.(ogg|mp3|m4a|wav|webm)$/i.test(directUrl) || directUrl.includes('voice_')) mediaType = 'audio';
+    else if (/\.(jpeg|jpg|png|webp|gif)$/i.test(directUrl)) mediaType = 'image';
+    else mediaType = 'document';
+  }
   const payload = {
     conversation_id: convId,
     module: 'whatsapp',
@@ -376,3 +382,9 @@ export async function sendTemplate({ line, to, name, language, params = [] }) {
   const data = await res.json().catch(() => ({}));
   return data?.messages?.[0]?.id || data?.id || data?.message_id || `local_${Date.now()}`;
 }
+
+// Pre-warm session & conversation cache in background so sending has zero latency
+setTimeout(() => {
+  getBoostrifySession().catch(() => {});
+  getConversationId('1').catch(() => {});
+}, 1000);

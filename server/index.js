@@ -439,8 +439,18 @@ app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), 
       id = config.demo ? `demo_out_${Date.now()}` : await sendTemplate({ line, to, name: tpl.name, language: tpl.language, params });
     } else {
       if (file) {
-        mime = file.mimetype;
-        type = mime.startsWith('image/') ? 'image' : mime.startsWith('audio/') ? 'audio' : 'document';
+        mime = file.mimetype || '';
+        if (req.body?.type) {
+          type = req.body.type;
+        } else if (mime.startsWith('image/')) {
+          type = 'image';
+        } else if (mime.startsWith('video/') || /\.(mp4|mov|avi|3gp|mkv)$/i.test(file.originalname)) {
+          type = 'video';
+        } else if (mime.startsWith('audio/') || /\.(ogg|mp3|m4a|wav|webm)$/i.test(file.originalname) || file.originalname.includes('voice_')) {
+          type = 'audio';
+        } else {
+          type = 'document';
+        }
         filename = file.originalname;
         mediaUrl = await makePublicMediaUrl(file);
       } else if (!text) return res.status(400).json({ error: 'empty message' });
