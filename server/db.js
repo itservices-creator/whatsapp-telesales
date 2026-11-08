@@ -158,17 +158,17 @@ export const canAccessLine = (user, lineId) => {
 };
 
 const withOwner = `SELECT c.*, u.name AS owner_name FROM contacts c LEFT JOIN users u ON u.id = c.owner`;
-/** Agents see their own chats + unassigned ones ONLY for lines they are permitted to access. */
+/** Agents see their own chats ONLY (assigned to them or created by them). Admins see all chats. */
 export const listContactsFor = (user) => {
   if (user.role === 'admin') {
     return db.prepare(`${withOwner} ORDER BY c.last_message_at DESC`).all();
   }
   const lines = (user.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (!lines.length || (config.lines && config.lines.length === 1)) {
-    return db.prepare(`${withOwner} WHERE (c.owner = ? OR c.owner IS NULL) ORDER BY c.last_message_at DESC`).all(user.id);
+    return db.prepare(`${withOwner} WHERE c.owner = ? ORDER BY c.last_message_at DESC`).all(user.id);
   }
   const placeholders = lines.map(() => '?').join(',');
-  return db.prepare(`${withOwner} WHERE c.line IN (${placeholders}) AND (c.owner = ? OR c.owner IS NULL) ORDER BY c.last_message_at DESC`).all(...lines, user.id);
+  return db.prepare(`${withOwner} WHERE c.line IN (${placeholders}) AND c.owner = ? ORDER BY c.last_message_at DESC`).all(...lines, user.id);
 };
 
 export const getContact = (line, phone) =>
@@ -176,7 +176,7 @@ export const getContact = (line, phone) =>
 export const canAccess = (user, contact) => {
   if (!contact) return false;
   if (!canAccessLine(user, contact.line)) return false;
-  return user.role === 'admin' || contact.owner == null || contact.owner === user.id;
+  return user.role === 'admin' || contact.owner === user.id;
 };
 
 export function ensureContact(line, phone, name, owner) {

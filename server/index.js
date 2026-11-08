@@ -90,13 +90,13 @@ const requireAuth = (req, res, next) => {
 const requireAdmin = (req, res, next) =>
   req.user.role === 'admin' ? next() : res.status(403).json({ error: 'forbidden' });
 
-/** Deliver realtime events only to the admin room and the chat owner (or the pool for that specific line). */
+/** Deliver realtime events only to the admin room and the chat owner. */
 function emitFor(event, payload, line, phone) {
   const c = getContact(line, phone);
   if (c?.owner) {
     io.to('admin').to(`u:${c.owner}`).emit(event, payload);
   } else {
-    io.to('admin').to(`line:${line}`).emit(event, payload);
+    io.to('admin').emit(event, payload);
   }
 }
 const refreshAll = () => io.emit('refresh');
@@ -327,9 +327,11 @@ app.post('/api/chats', requireAuth, (req, res) => {
   if (!canAccessLine(req.user, line)) return res.status(403).json({ error: 'ليس لديك صلاحية استخدام هذا الرقم' });
   if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: 'رقم العميل غير صحيح (اكتبه بصيغة دولية بدون +، مثال 201001234567)' });
   const existing = getContact(line, phone);
-  if (existing && !canAccess(req.user, existing)) return res.status(409).json({ error: `العميل ده مع الموظف ${existing.owner_name}` });
+  if (existing && existing.owner && existing.owner !== req.user.id && req.user.role !== 'admin') {
+    return res.status(409).json({ error: `العميل ده مع الموظف ${existing.owner_name}` });
+  }
   ensureContact(line, phone, String(req.body?.name || '').trim(), req.user.id);
-  claimIfUnowned(line, phone, req.user.id);
+  setOwner(line, phone, req.user.id);
   refreshAll();
   res.json(getContact(line, phone));
 });
