@@ -200,6 +200,9 @@
     line: 'all',
   };
 
+  // Track IDs of messages sent by THIS browser tab to avoid socket echo duplicates
+  const sentByMe = new Set();
+
   const lineName = (id) => (state.allLines || state.lines).find((l) => l.id === id)?.name || id;
   const chatUrl = (c, tail) => `/api/contacts/${encodeURIComponent(c.line)}/${encodeURIComponent(c.phone)}/${tail}`;
   const isActive = (c) => state.active && state.active.line === c.line && state.active.phone === c.phone;
@@ -299,26 +302,16 @@
 
   function onIncoming(m) {
     const active = state.active && state.active.line === m.line && state.active.phone === m.phone;
-    if (active) {
-      // If an optimistic outgoing bubble with temp_ exists, replace it instead of duplicating
-      const tempIdx = m.direction === 'out'
-        ? state.messages.findIndex((x) => x.id && x.id.startsWith('temp_') && x.body === m.body && (x.type === m.type || (!x.body && x.type === 'image')))
-        : -1;
 
-      if (tempIdx >= 0) {
-        const oldTempId = state.messages[tempIdx].id;
-        state.messages[tempIdx] = m;
-        const el = document.querySelector(`.msg[data-id="${oldTempId}"]`);
-        if (el) {
-          el.dataset.id = m.id;
-          const tick = el.querySelector('.tick');
-          if (tick) paintTick(tick, m.status || 'sent');
-        }
-      } else if (!state.messages.some((x) => x.id === m.id)) {
-        state.messages.push(m);
-        appendMessage(m);
-      }
+    // Ignore socket echo for messages we sent from this tab
+    if (m.direction === 'out' && sentByMe.has(m.id)) {
+      sentByMe.delete(m.id);
+      return;
+    }
 
+    if (active && !state.messages.some((x) => x.id === m.id)) {
+      state.messages.push(m);
+      appendMessage(m);
       if (m.direction === 'in') {
         state.windowOpen = true;
         updateComposer();
@@ -485,8 +478,7 @@
     else if (m.type === 'reaction') inner += `<span class="reaction-pill">${esc(m.body || '❤️')}</span>`;
     if (m.body && m.type !== 'reaction') inner += `<div>${linkify(m.body).replace(/\n/g, '<br>')}</div>`;
     const tick = m.direction === 'out' ? `<span class="tick ${m.status}">${TICKS[m.status] || ''}</span>` : '';
-    const reactBar = `<div class="msg-react-bar">${QUICK_REACTIONS.map((em) => `<button type="button" class="msg-react-btn" data-emoji="${em}" title="${em}">${em}</button>`).join('')}</div>`;
-    return `<div class="msg ${m.direction}" data-id="${esc(m.id)}">${reactBar}${inner}<div class="meta"><span>${fmtTime(m.ts)}</span>${tick}</div></div>`;
+    return `<div class="msg ${m.direction}" data-id="${esc(m.id)}">${inner}<div class="meta"><span>${fmtTime(m.ts)}</span>${tick}</div></div>`;
   }
 
   $('back').addEventListener('click', () => { $('app').classList.remove('open'); state.active = null; renderContacts(); });
@@ -629,6 +621,8 @@
         try {
           const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
           if (row) {
+            // Register this ID so the socket echo is ignored
+            sentByMe.add(row.id);
             const idx = state.messages.findIndex((m) => m.id === tempId);
             if (idx >= 0) state.messages[idx] = row;
             const el = document.querySelector(`.msg[data-id="${tempId}"]`);
@@ -753,6 +747,8 @@
     try {
       const row = await api(chatUrl(state.active, 'send'), { method: 'POST', body: fd });
       if (row) {
+        // Register this ID so the socket echo is ignored
+        sentByMe.add(row.id);
         const idx = state.messages.findIndex((m) => m.id === tempId);
         if (idx >= 0) state.messages[idx] = row;
         const el = document.querySelector(`.msg[data-id="${tempId}"]`);
