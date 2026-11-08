@@ -418,7 +418,7 @@ app.get('/v/:filename', (req, res) => {
 });
 
 async function makePublicMediaUrl(file) {
-  return `${config.publicBaseUrl}/v/${file.filename}`;
+  return `${config.publicBaseUrl}/uploads/${file.filename}`;
 }
 
 app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), async (req, res) => {

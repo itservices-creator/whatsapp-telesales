@@ -37,10 +37,16 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filename }) 
     };
 
     if (mediaUrl) {
-      payload.media_url = mediaUrl;
-      payload.preview_url = true;
-      // In WhatsApp, sending the preview URL generates the rich image card on customer's phone
-      payload.message = (body && body.trim()) ? `${body.trim()}\n${mediaUrl}` : mediaUrl;
+      const directUrl = mediaUrl.replace('/v/', '/uploads/');
+      payload.type = type || 'image';
+      payload.media_url = directUrl;
+      payload.file_url = directUrl;
+      payload.link = directUrl;
+      payload.url = directUrl;
+      if (body && body.trim()) {
+        payload.message = body.trim();
+        payload.caption = body.trim();
+      }
     } else {
       payload.message = body || '';
     }

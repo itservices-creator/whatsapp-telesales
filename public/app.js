@@ -560,7 +560,7 @@
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       activeStream = stream;
 
-      const mime = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+      const mime = ['audio/ogg;codecs=opus', 'audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm']
         .find((m) => MediaRecorder.isTypeSupported(m)) || '';
 
       mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
@@ -576,7 +576,7 @@
           return;
         }
         const mimeType = mediaRecorder.mimeType || 'audio/ogg';
-        const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'mp4' : 'ogg';
+        const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : mimeType.includes('webm') ? 'webm' : 'ogg';
         const audioBlob = new Blob(audioChunks, { type: mimeType });
         resetRecordingUI();
 
