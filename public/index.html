@@ -155,6 +155,11 @@
           <input id="u-name" placeholder="الاسم (مثال: أحمد علي)" required />
           <input id="u-username" dir="ltr" placeholder="اسم المستخدم (username)" autocapitalize="none" required />
           <input id="u-password" dir="ltr" placeholder="كلمة المرور" required />
+          <select id="u-role">
+            <option value="agent">موظف (Agent)</option>
+            <option value="admin">مشرف / أدمن (Admin - إسناد وتوزيع الشات فقط)</option>
+            <option value="super_admin">مدير عام (Super Admin - صلاحية كاملة)</option>
+          </select>
         </div>
         <div class="line-choices-box">
           <span class="choice-title" data-i18n="allowed_lines_title">الأرقام المسموح له بالرد والإرسال منها:</span>

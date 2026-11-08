@@ -61,7 +61,8 @@
       max_file_err: 'الحد الأقصى لحجم الملف 16 ميجابايت',
       send_failed: 'فشل الإرسال:',
       no_templates_err: 'لا توجد قوالب مضافة. أضف القوالب المعتمدة من Meta في ملف templates.json',
-      role_admin: 'مدير',
+      role_super_admin: 'مدير عام',
+      role_admin: 'مشرف / أدمن',
       role_agent: 'موظف',
       today: 'اليوم',
       yesterday: 'أمس',
@@ -130,6 +131,7 @@
       max_file_err: 'Maximum file size is 16MB',
       send_failed: 'Failed to send:',
       no_templates_err: 'No templates found. Add Meta-approved templates in templates.json',
+      role_super_admin: 'Super Admin',
       role_admin: 'Admin',
       role_agent: 'Agent',
       today: 'Today',
@@ -263,8 +265,9 @@
     try { state.user = await api('/api/me'); } catch { return; }
     $('login').classList.add('hidden');
     $('app').classList.remove('hidden');
-    $('whoami').textContent = `${state.user.name}${state.user.role === 'admin' ? ' • ' + t('role_admin') : ''}`;
-    $('admin-btn').classList.toggle('hidden', state.user.role !== 'admin');
+    const roleLabel = state.user.role === 'super_admin' ? t('role_super_admin') : (state.user.role === 'admin' ? t('role_admin') : '');
+    $('whoami').textContent = `${state.user.name}${roleLabel ? ' • ' + roleLabel : ''}`;
+    $('admin-btn').classList.toggle('hidden', state.user.role !== 'super_admin');
     state.users = await api('/api/users');
     state.templates = await api('/api/templates');
     const info = await api('/api/lines');
@@ -363,7 +366,7 @@
     const parts = [];
     if (state.line === 'all' && state.lines.length > 1) parts.push(`${t('via')} ${esc(lineName(c.line))}`);
     if (c.owner == null) return `<div class="c-line unassigned">${t('unassigned')}${parts.length ? ' • ' + parts.join(' ') : ''}</div>`;
-    if (state.user.role === 'admin') parts.push(`${t('assigned_to')}: ${esc(c.owner_name || '')}`);
+    if (state.user.role === 'admin' || state.user.role === 'super_admin') parts.push(`${t('assigned_to')}: ${esc(c.owner_name || '')}`);
     return parts.length ? `<div class="c-line">${parts.join(' • ')}</div>` : '';
   }
 
@@ -406,8 +409,9 @@
 
   function renderOwnerSelect() {
     const sel = $('owner-select');
-    sel.classList.toggle('hidden', state.user.role !== 'admin');
-    if (state.user.role !== 'admin') return;
+    const canAssign = state.user.role === 'admin' || state.user.role === 'super_admin';
+    sel.classList.toggle('hidden', !canAssign);
+    if (!canAssign) return;
     const agents = (state.users || []).filter((u) => u.active);
     sel.innerHTML = `<option value="">${t('unassigned')}</option>` +
       agents.map((u) => `<option value="${u.id}" ${state.active.owner === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('');
@@ -858,7 +862,7 @@
   }
 
   function userLinesPills(u) {
-    if (u.role === 'admin') return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span></div>`;
+    if (u.role === 'super_admin' || u.role === 'admin') return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span></div>`;
     const allowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
     if (!allowed.length) return `<div class="user-lines-tags"><span class="line-pill none">${t('no_lines_allowed')}</span></div>`;
     return `<div class="user-lines-tags">${allowed.map((id) => `<span class="line-pill">${esc(lineName(id))}</span>`).join('')}</div>`;
@@ -867,19 +871,23 @@
   async function renderUsers() {
     state.users = await api('/api/users');
     renderLineCheckboxes();
-    $('users-list').innerHTML = state.users.map((u) => `
+    $('users-list').innerHTML = state.users.map((u) => {
+      const roleText = u.role === 'super_admin' ? t('role_super_admin') : (u.role === 'admin' ? t('role_admin') : t('role_agent'));
+      const isPrivileged = u.role === 'super_admin' || u.role === 'admin';
+      return `
       <div class="user-row ${u.active ? '' : 'off'}">
         <div class="avatar" style="width:36px;height:36px;font-size:15px;background:hsl(${hue(u.username)} 45% 38%)">${esc(u.name.charAt(0))}</div>
         <div class="u-info">
-          <div><strong>${esc(u.name)}</strong> ${u.role === 'admin' ? `<span class="role">${t('role_admin')}</span>` : ''} <small dir="ltr" style="display:inline">@${esc(u.username)}</small></div>
+          <div><strong>${esc(u.name)}</strong> <span class="role ${u.role}">${esc(roleText)}</span> <small dir="ltr" style="display:inline">@${esc(u.username)}</small></div>
           ${userLinesPills(u)}
         </div>
         <div class="user-actions">
           <button class="btn ghost small" data-act="pw" data-id="${u.id}">${t('change_password')}</button>
-          ${u.role !== 'admin' ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
+          ${!isPrivileged ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
           ${u.id !== state.user.id ? `<button class="btn ghost small" data-act="toggle" data-id="${u.id}">${u.active ? t('deactivate_btn') : t('activate_btn')}</button>` : ''}
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   $('admin-btn').addEventListener('click', async () => {
@@ -926,10 +934,12 @@
       return;
     }
     try {
+      const selectedRole = $('u-role') ? $('u-role').value : 'agent';
       await api('/api/users', jsonOpts('POST', {
         name: $('u-name').value,
         username: $('u-username').value,
         password: $('u-password').value,
+        role: selectedRole,
         allowed_lines: checkedLines,
       }));
       $('user-form').reset();

@@ -143,17 +143,21 @@ export function authenticate(username, password) {
 }
 /** Make sure an admin exists (password from ADMIN_PASSWORD / STAFF_PASSWORD). */
 export function ensureAdmin(password) {
-  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
-  if (!admin) {
-    createUser({ username: 'admin', name: 'المدير', password, role: 'admin', allowed_lines: '' });
-  } else if (password) {
-    updateUser(admin.id, { password });
+  // Update any existing admin to super_admin or create default super_admin
+  const existingSuper = db.prepare("SELECT id FROM users WHERE role = 'super_admin'").get();
+  if (!existingSuper) {
+    const oldAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' AND username = 'admin'").get();
+    if (oldAdmin) {
+      db.prepare("UPDATE users SET role = 'super_admin' WHERE id = ?").run(oldAdmin.id);
+    } else {
+      createUser({ username: 'admin', name: 'المدير العام', password: password || 'admin123', role: 'super_admin', allowed_lines: '' });
+    }
   }
 }
 
 export const canAccessLine = (user, lineId) => {
   if (!user) return false;
-  if (user.role === 'admin') return true;
+  if (user.role === 'super_admin' || user.role === 'admin') return true;
   // If company only has 1 line configured, everyone has access to it
   if (config.lines && config.lines.length === 1 && String(lineId) === String(config.lines[0].id)) return true;
   // If user has no specific allowed_lines or it's empty, allow all company lines by default
@@ -163,9 +167,9 @@ export const canAccessLine = (user, lineId) => {
 };
 
 const withOwner = `SELECT c.*, u.name AS owner_name FROM contacts c LEFT JOIN users u ON u.id = c.owner`;
-/** Agents see their own chats ONLY (assigned to them or created by them). Admins see all chats. */
+/** Agents see their own chats ONLY (assigned to them or created by them). Admins & Super Admins see all chats. */
 export const listContactsFor = (user) => {
-  if (user.role === 'admin') {
+  if (user.role === 'super_admin' || user.role === 'admin') {
     return db.prepare(`${withOwner} ORDER BY c.last_message_at DESC`).all();
   }
   const lines = (user.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -181,7 +185,7 @@ export const getContact = (line, phone) =>
 export const canAccess = (user, contact) => {
   if (!contact) return false;
   if (!canAccessLine(user, contact.line)) return false;
-  return user.role === 'admin' || contact.owner === user.id;
+  return user.role === 'super_admin' || user.role === 'admin' || contact.owner === user.id;
 };
 
 export function ensureContact(line, phone, name, owner) {

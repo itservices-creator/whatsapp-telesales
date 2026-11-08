@@ -92,7 +92,10 @@ const requireAuth = (req, res, next) => {
   next();
 };
 const requireAdmin = (req, res, next) =>
-  req.user.role === 'admin' ? next() : res.status(403).json({ error: 'forbidden' });
+  (req.user.role === 'super_admin' || req.user.role === 'admin') ? next() : res.status(403).json({ error: 'forbidden' });
+
+const requireSuperAdmin = (req, res, next) =>
+  req.user.role === 'super_admin' ? next() : res.status(403).json({ error: 'صلاحية المدير العام فقط (Super Admin)' });
 
 /** Deliver realtime events only to the admin room and the chat owner. */
 function emitFor(event, payload, line, phone) {
@@ -289,7 +292,8 @@ app.post('/api/logout', (req, res) => {
 });
 app.get('/api/me', requireAuth, (req, res) => res.json(req.user));
 app.get('/api/lines', requireAuth, (req, res) => {
-  const permitted = req.user.role === 'admin'
+  const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+  const permitted = isAdmin
     ? config.lines
     : config.lines.filter((l) => canAccessLine(req.user, l.id));
   const finalLines = permitted.length ? permitted : config.lines;
@@ -302,16 +306,17 @@ app.get('/api/templates', requireAuth, (_req, res) => {
 
 
 
-// --- employees (admin) ---
+// --- employees (admin / super_admin) ---
 app.get('/api/users', requireAuth, (_req, res) => res.json(listUsers()));
-app.post('/api/users', requireAuth, requireAdmin, (req, res) => {
+app.post('/api/users', requireAuth, requireSuperAdmin, (req, res) => {
   const { username, name, password, role, allowed_lines } = req.body || {};
   if (!username || !name || !password || String(password).length < 4) return res.status(400).json({ error: 'بيانات ناقصة (كلمة المرور 4 أحرف على الأقل)' });
   try {
-    res.json(getUser(createUser({ username, name, password, role: role === 'admin' ? 'admin' : 'agent', allowed_lines })));
+    const validRole = role === 'super_admin' ? 'super_admin' : (role === 'admin' ? 'admin' : 'agent');
+    res.json(getUser(createUser({ username, name, password, role: validRole, allowed_lines })));
   } catch { res.status(409).json({ error: 'اسم المستخدم موجود بالفعل' }); }
 });
-app.patch('/api/users/:id', requireAuth, requireAdmin, (req, res) => {
+app.patch('/api/users/:id', requireAuth, requireSuperAdmin, (req, res) => {
   const id = Number(req.params.id);
   if (!getUser(id)) return res.sendStatus(404);
   if (id === req.user.id && req.body.active === false) return res.status(400).json({ error: 'لا يمكنك تعطيل حسابك' });
@@ -331,7 +336,8 @@ app.post('/api/chats', requireAuth, (req, res) => {
   if (!canAccessLine(req.user, line)) return res.status(403).json({ error: 'ليس لديك صلاحية استخدام هذا الرقم' });
   if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: 'رقم العميل غير صحيح (اكتبه بصيغة دولية بدون +، مثال 201001234567)' });
   const existing = getContact(line, phone);
-  if (existing && existing.owner && existing.owner !== req.user.id && req.user.role !== 'admin') {
+  const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+  if (existing && existing.owner && existing.owner !== req.user.id && !isAdmin) {
     return res.status(409).json({ error: `العميل ده مع الموظف ${existing.owner_name}` });
   }
   ensureContact(line, phone, String(req.body?.name || '').trim(), req.user.id);
@@ -565,7 +571,7 @@ io.use((socket, next) => {
   const u = userFromReq(socket.request);
   if (!u) return next(new Error('unauthorized'));
   socket.join(`u:${u.id}`);
-  if (u.role === 'admin') {
+  if (u.role === 'super_admin' || u.role === 'admin') {
     socket.join('admin');
   } else {
     const allowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
