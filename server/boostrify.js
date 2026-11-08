@@ -25,8 +25,165 @@ async function call(u, opts = {}) {
   return res;
 }
 
+let sessionState = {
+  xsrfToken: '',
+  sessionCookie: '',
+  authCookieHeader: '',
+  lastLogin: 0,
+};
+
+async function getBoostrifySession(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && sessionState.authCookieHeader && (now - sessionState.lastLogin < 4 * 3600 * 1000)) {
+    return sessionState;
+  }
+
+  const email = b.email || 'itservices@taager.com';
+  const password = b.password || 'NEStu8zy';
+
+  console.log('[Boostrify Session] Logging in as', email, '...');
+  const getRes = await fetch('https://boostrify.pro/login', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+  });
+
+  const rawCookies = getRes.headers.getSetCookie ? getRes.headers.getSetCookie() : [getRes.headers.get('set-cookie')];
+  let xsrfToken = '', sessionCookie = '';
+
+  for (const c of rawCookies) {
+    if (c.includes('XSRF-TOKEN=')) {
+      const match = c.match(/XSRF-TOKEN=([^;]+)/);
+      if (match) xsrfToken = decodeURIComponent(match[1]);
+    }
+    if (c.includes('boostrify_pro_session=')) {
+      const match = c.match(/boostrify_pro_session=([^;]+)/);
+      if (match) sessionCookie = match[1];
+    }
+  }
+
+  const cookieHeader = `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`;
+
+  const postRes = await fetch('https://boostrify.pro/login', {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'X-XSRF-TOKEN': xsrfToken,
+      'X-Inertia': 'true',
+      'Cookie': cookieHeader,
+      'Referer': 'https://boostrify.pro/login',
+    },
+    body: JSON.stringify({ email, password, remember: true }),
+    redirect: 'manual',
+  });
+
+  const postCookies = postRes.headers.getSetCookie ? postRes.headers.getSetCookie() : [postRes.headers.get('set-cookie')];
+  if (postCookies && postCookies.length) {
+    for (const c of postCookies) {
+      if (c && c.includes('boostrify_pro_session=')) {
+        const match = c.match(/boostrify_pro_session=([^;]+)/);
+        if (match) sessionCookie = match[1];
+      }
+      if (c && c.includes('XSRF-TOKEN=')) {
+        const match = c.match(/XSRF-TOKEN=([^;]+)/);
+        if (match) xsrfToken = decodeURIComponent(match[1]);
+      }
+    }
+  }
+
+  sessionState = {
+    xsrfToken,
+    sessionCookie,
+    authCookieHeader: `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`,
+    lastLogin: Date.now(),
+  };
+
+  console.log('[Boostrify Session] Login successful, session established.');
+  return sessionState;
+}
+
+/** Send native media via Live Chat session endpoint */
+async function sendNativeMedia({ to, type, mediaUrl, caption }) {
+  const directUrl = mediaUrl.includes('/v/') ? mediaUrl.replace('/v/', '/uploads/') : mediaUrl;
+  let convId = await getConversationId(to);
+  if (!convId) {
+    conversationIdCache.clear();
+    convId = await getConversationId(to);
+  }
+
+  if (!convId) {
+    console.warn('[sendNativeMedia] Could not find conversation_id for phone', to);
+    return null;
+  }
+
+  const mediaType = type === 'audio' || /\.(ogg|mp3|m4a|wav|webm)/i.test(directUrl) ? 'audio' : 'image';
+  const payload = {
+    conversation_id: convId,
+    module: 'whatsapp',
+    type: mediaType,
+    attachments: [directUrl],
+    caption: caption || '',
+    reply_message_uuid: null,
+  };
+
+  console.log('[sendNativeMedia] Sending via /user/messages:', JSON.stringify(payload));
+
+  let sess = await getBoostrifySession();
+  let res = await fetch('https://boostrify.pro/user/messages', {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'X-XSRF-TOKEN': sess.xsrfToken,
+      'Cookie': sess.authCookieHeader,
+      'Referer': 'https://boostrify.pro/',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (res.status === 419 || res.status === 401) {
+    console.warn('[sendNativeMedia] Session expired (status', res.status, '), re-authenticating...');
+    sess = await getBoostrifySession(true);
+    res = await fetch('https://boostrify.pro/user/messages', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'X-XSRF-TOKEN': sess.xsrfToken,
+        'Cookie': sess.authCookieHeader,
+        'Referer': 'https://boostrify.pro/',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  const data = await res.json().catch(() => ({}));
+  console.log('[sendNativeMedia] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid, type: data.type } : data));
+
+  if (!res.ok || (!data.uuid && !data.id)) {
+    throw new Error(`Boostrify live-chat send failed: ${JSON.stringify(data)}`);
+  }
+
+  return data.uuid || data.id || `live_${Date.now()}`;
+}
+
 /** Send text / image / audio / document. Returns the provider message id. */
 export async function sendMessage({ line, to, type, body, mediaUrl, filename }) {
+  // If sending media (image or audio) and we have Boostrify credentials, send native media!
+  if (mediaUrl && (b.email || b.password)) {
+    try {
+      const uuid = await sendNativeMedia({ to, type, mediaUrl, caption: body });
+      if (uuid) return uuid;
+    } catch (err) {
+      console.warn('[sendNativeMedia failed, falling back to REST API]:', err.message);
+    }
+  }
+
   // If Boostrify REST API credentials are used
   if (b.appKey && b.authKey) {
     const cleanTo = String(to).replace(/[^0-9]/g, '');
@@ -38,15 +195,8 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filename }) 
 
     if (mediaUrl) {
       const directUrl = mediaUrl.replace('/v/', '/uploads/');
-      payload.type = type || 'image';
       payload.media_url = directUrl;
-      payload.file_url = directUrl;
-      payload.link = directUrl;
-      payload.url = directUrl;
-      if (body && body.trim()) {
-        payload.message = body.trim();
-        payload.caption = body.trim();
-      }
+      payload.message = (body && body.trim()) ? `${body.trim()}\n${directUrl}` : directUrl;
     } else {
       payload.message = body || '';
     }
