@@ -299,9 +299,26 @@
 
   function onIncoming(m) {
     const active = state.active && state.active.line === m.line && state.active.phone === m.phone;
-    if (active && !state.messages.some((x) => x.id === m.id)) {
-      state.messages.push(m);
-      appendMessage(m);
+    if (active) {
+      // If an optimistic outgoing bubble with temp_ exists, replace it instead of duplicating
+      const tempIdx = m.direction === 'out'
+        ? state.messages.findIndex((x) => x.id && x.id.startsWith('temp_') && x.body === m.body && (x.type === m.type || (!x.body && x.type === 'image')))
+        : -1;
+
+      if (tempIdx >= 0) {
+        const oldTempId = state.messages[tempIdx].id;
+        state.messages[tempIdx] = m;
+        const el = document.querySelector(`.msg[data-id="${oldTempId}"]`);
+        if (el) {
+          el.dataset.id = m.id;
+          const tick = el.querySelector('.tick');
+          if (tick) paintTick(tick, m.status || 'sent');
+        }
+      } else if (!state.messages.some((x) => x.id === m.id)) {
+        state.messages.push(m);
+        appendMessage(m);
+      }
+
       if (m.direction === 'in') {
         state.windowOpen = true;
         updateComposer();
