@@ -3,8 +3,12 @@ import multer from 'multer';
 import { createServer } from 'node:http';
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, createWriteStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Server } from 'socket.io';
@@ -452,6 +456,23 @@ app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), 
           type = 'document';
         }
         filename = file.originalname;
+
+        // If audio (like recorded voice notes), convert to ogg opus if not already .ogg
+        if (type === 'audio' && !file.filename.endsWith('.ogg')) {
+          const oggFilename = file.filename.replace(/\.[^.]+$/, '') + '.ogg';
+          const inputPath = resolve(UPLOAD_DIR, file.filename);
+          const outputPath = resolve(UPLOAD_DIR, oggFilename);
+          try {
+            await execFileAsync('ffmpeg', ['-y', '-i', inputPath, '-c:a', 'libopus', '-b:a', '32k', outputPath]);
+            file.filename = oggFilename;
+            mime = 'audio/ogg';
+            filename = filename.replace(/\.[^.]+$/, '') + '.ogg';
+            unlink(inputPath).catch(() => {});
+          } catch (ffmpegErr) {
+            console.warn('[ffmpeg conversion skipped/failed]:', ffmpegErr.message);
+          }
+        }
+
         mediaUrl = await makePublicMediaUrl(file);
       } else if (!text) return res.status(400).json({ error: 'empty message' });
       id = config.demo ? `demo_out_${Date.now()}` : await sendMessage({ line, to, type, body: text, mediaUrl, filename });

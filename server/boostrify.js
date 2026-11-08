@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { getContactConvId, setContactConvId } from './db.js';
 
 const { boostrify: b } = config;
 
@@ -240,13 +241,25 @@ const conversationIdCache = new Map();
 /** Get Boostrify conversation ID by customer phone */
 export async function getConversationId(phone) {
   const clean = String(phone).replace(/\D/g, '');
+  if (!clean) return null;
   if (conversationIdCache.has(clean)) return conversationIdCache.get(clean);
+
+  // Check persistent DB cache first for 0ms lookup
+  const dbConvId = getContactConvId(clean);
+  if (dbConvId) {
+    conversationIdCache.set(clean, dbConvId);
+    return dbConvId;
+  }
+
   try {
     const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01`);
     const json = await res.json();
     for (const c of json?.data || []) {
       const p = String(c.customer?.phone || '').replace(/\D/g, '');
-      if (p && c.id) conversationIdCache.set(p, c.id);
+      if (p && c.id) {
+        conversationIdCache.set(p, c.id);
+        setContactConvId(p, c.id);
+      }
     }
     return conversationIdCache.get(clean) || null;
   } catch (err) {

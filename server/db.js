@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   last_message_at INTEGER DEFAULT 0,
   last_preview TEXT DEFAULT '',
   unread INTEGER DEFAULT 0,
+  conv_id INTEGER,
   PRIMARY KEY (line, phone)
 );
 CREATE TABLE IF NOT EXISTS messages (
@@ -31,6 +32,10 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_chat_ts ON messages(line, phone, ts);
 `);
+
+try {
+  db.exec('ALTER TABLE contacts ADD COLUMN conv_id INTEGER');
+} catch (_) {}
 
 const previewOf = (m) =>
   m.type === 'text' ? m.body : ({ image: '📷 صورة', audio: '🎤 رسالة صوتية', document: '📄 ملف' }[m.type] || 'رسالة');
@@ -187,6 +192,19 @@ export const setOwner = (line, phone, owner) =>
   db.prepare('UPDATE contacts SET owner = ? WHERE line = ? AND phone = ?').run(owner ?? null, line, phone);
 export const claimIfUnowned = (line, phone, uid) =>
   db.prepare('UPDATE contacts SET owner = ? WHERE line = ? AND phone = ? AND owner IS NULL').run(uid, line, phone);
+
+export const setContactConvId = (phone, convId) => {
+  const clean = String(phone).replace(/\D/g, '');
+  if (!clean || !convId) return;
+  db.prepare('UPDATE contacts SET conv_id = ? WHERE phone = ?').run(convId, clean);
+};
+
+export const getContactConvId = (phone) => {
+  const clean = String(phone).replace(/\D/g, '');
+  if (!clean) return null;
+  const row = db.prepare('SELECT conv_id FROM contacts WHERE phone = ? AND conv_id IS NOT NULL').get(clean);
+  return row?.conv_id || null;
+};
 
 /** WhatsApp 24h customer-service window: free text allowed only if the customer wrote within 24h. */
 export const windowOpen = (line, phone) => {
