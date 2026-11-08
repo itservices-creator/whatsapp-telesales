@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
+import { config } from './config.js';
 
 mkdirSync('data', { recursive: true });
 export const db = new DatabaseSync(process.env.DB_FILE || 'data/chat.db');
@@ -148,7 +149,10 @@ export function ensureAdmin(password) {
 export const canAccessLine = (user, lineId) => {
   if (!user) return false;
   if (user.role === 'admin') return true;
-  if (!user.allowed_lines || user.allowed_lines.trim() === '') return false;
+  // If company only has 1 line configured, everyone has access to it
+  if (config.lines && config.lines.length === 1 && String(lineId) === String(config.lines[0].id)) return true;
+  // If user has no specific allowed_lines or it's empty, allow all company lines by default
+  if (!user.allowed_lines || user.allowed_lines.trim() === '') return true;
   const list = user.allowed_lines.split(',').map((s) => s.trim()).filter(Boolean);
   return list.includes(String(lineId));
 };
@@ -160,7 +164,9 @@ export const listContactsFor = (user) => {
     return db.prepare(`${withOwner} ORDER BY c.last_message_at DESC`).all();
   }
   const lines = (user.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!lines.length) return [];
+  if (!lines.length || (config.lines && config.lines.length === 1)) {
+    return db.prepare(`${withOwner} WHERE (c.owner = ? OR c.owner IS NULL) ORDER BY c.last_message_at DESC`).all(user.id);
+  }
   const placeholders = lines.map(() => '?').join(',');
   return db.prepare(`${withOwner} WHERE c.line IN (${placeholders}) AND (c.owner = ? OR c.owner IS NULL) ORDER BY c.last_message_at DESC`).all(...lines, user.id);
 };

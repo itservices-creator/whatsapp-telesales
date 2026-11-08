@@ -699,10 +699,15 @@
 
   // New Chat
   $('new-chat').addEventListener('click', () => {
-    $('new-line').innerHTML = state.lines.map((l) => `<option value="${esc(l.id)}">${esc(l.name)} (${esc(l.id)})</option>`).join('');
-    if (state.line !== 'all' && state.lines.some((l) => l.id === state.line)) $('new-line').value = state.line;
-    $('new-error').textContent = '';
     $('new-form').reset();
+    $('new-error').textContent = '';
+    const list = (state.lines && state.lines.length) ? state.lines : (state.allLines && state.allLines.length ? state.allLines : [{ id: '191', name: 'wafyStore 💬' }]);
+    $('new-line').innerHTML = list.map((l, idx) => `<option value="${esc(l.id)}"${idx === 0 ? ' selected' : ''}>${esc(l.name)} (${esc(l.id)})</option>`).join('');
+    if (state.line !== 'all' && list.some((l) => l.id === state.line)) {
+      $('new-line').value = state.line;
+    } else if (list.length > 0) {
+      $('new-line').value = list[0].id;
+    }
     openModal('modal-new');
     $('new-phone').focus();
   });

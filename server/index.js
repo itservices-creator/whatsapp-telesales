@@ -288,7 +288,8 @@ app.get('/api/lines', requireAuth, (req, res) => {
   const permitted = req.user.role === 'admin'
     ? config.lines
     : config.lines.filter((l) => canAccessLine(req.user, l.id));
-  res.json({ lines: permitted, allLines: config.lines, demo: config.demo });
+  const finalLines = permitted.length ? permitted : config.lines;
+  res.json({ lines: finalLines, allLines: config.lines, demo: config.demo });
 });
 app.get('/api/templates', requireAuth, (_req, res) => {
   try { templates = JSON.parse(readFileSync(resolve('templates.json'), 'utf8')); } catch { /* optional */ }
