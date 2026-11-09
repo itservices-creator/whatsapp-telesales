@@ -450,7 +450,11 @@ app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), 
       const params = JSON.parse(req.body.params || '[]');
       if (params.length < tpl.params.length || params.some((p) => !String(p).trim())) return res.status(400).json({ error: 'املأ كل متغيرات القالب' });
       body = renderTemplate(tpl, params);
-      id = config.demo ? `demo_out_${Date.now()}` : await sendTemplate({ line, to, name: tpl.name, language: tpl.language, params });
+      if (tpl.is_quick_text) {
+        id = config.demo ? `demo_out_${Date.now()}` : await sendMessage({ line, to, type: 'text', body });
+      } else {
+        id = config.demo ? `demo_out_${Date.now()}` : await sendTemplate({ line, to, name: tpl.name, language: tpl.language, params });
+      }
     } else {
       if (file) {
         mime = file.mimetype || '';

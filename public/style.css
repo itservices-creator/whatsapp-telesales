@@ -574,14 +574,46 @@ html[dir="rtl"] .msg-react-bar {
   font-weight: 500;
 }
 
+/* Quick action pills */
+.quick-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 4px 14px;
+  background: #f0f2f5;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+}
+.quick-pill {
+  border: 1px solid rgba(0, 168, 132, 0.45);
+  background: #ffffff;
+  color: #0b4a3f;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all .15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.quick-pill:hover {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
 /* composer */
 .composer {
   display: flex;
   gap: 8px;
   align-items: flex-end;
-  padding: 10px 14px;
+  padding: 6px 14px 10px 14px;
   background: #f0f2f5;
-  border-top: 1px solid var(--line);
+  border-top: none;
 }
 .composer textarea {
   flex: 1;

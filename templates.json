@@ -1,5 +1,13 @@
 [
   {
+    "name": "greeting_intro",
+    "language": "ar",
+    "label": "👋 رسالة افتتاحية (حياك الله معك...)",
+    "body": "حياك الله معك {{1}} من WAFY Store",
+    "params": ["اسم الموظف"],
+    "is_quick_text": true
+  },
+  {
     "name": "delivered",
     "language": "ar",
     "label": "تم التوصيل (delivered)",

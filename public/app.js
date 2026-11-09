@@ -470,6 +470,7 @@
 
   function updateComposer() {
     $('composer').classList.toggle('hidden', !state.windowOpen);
+    if ($('quick-bar')) $('quick-bar').classList.toggle('hidden', !state.windowOpen);
     $('tpl-bar').classList.toggle('hidden', state.windowOpen);
   }
 
@@ -860,9 +861,12 @@
   function renderTplFields() {
     const tpl = tplByName($('tpl-select').value);
     if (!tpl) return;
-    const defaults = [state.active?.name || '', state.user.name];
-    $('tpl-params').innerHTML = tpl.params.map((p, i) =>
-      `<label>${esc(p)}<input data-param="${i}" value="${esc(defaults[i] || '')}" required /></label>`).join('');
+    const staffName = state.user?.name || '';
+    $('tpl-params').innerHTML = tpl.params.map((p, i) => {
+      const isStaff = /موظف|ممثل|خدمة|كول|سيلز/i.test(p);
+      const defaultVal = isStaff ? staffName : (i === 0 ? (state.active?.name || '') : '');
+      return `<label>${esc(p)}<input data-param="${i}" value="${esc(defaultVal)}" required /></label>`;
+    }).join('');
     updateTplPreview();
   }
   function tplValues() { return [...document.querySelectorAll('[data-param]')].map((i) => i.value); }
@@ -882,6 +886,19 @@
   $('tpl-params').addEventListener('input', updateTplPreview);
   $('tpl-btn').addEventListener('click', openTemplateModal);
   $('tpl-open').addEventListener('click', openTemplateModal);
+
+  const btnQuickIntro = $('btn-quick-intro');
+  if (btnQuickIntro) {
+    btnQuickIntro.addEventListener('click', () => {
+      if (!state.active) return;
+      const myName = (state.user?.name || '').trim();
+      const text = `حياك الله معك ${myName} من WAFY Store`;
+      ta.value = text;
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';
+      ta.focus();
+    });
+  }
   $('tpl-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData();
