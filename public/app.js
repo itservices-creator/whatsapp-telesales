@@ -290,12 +290,19 @@
     s.on('disconnect', () => $('conn').classList.remove('on'));
     s.on('message', onIncoming);
     s.on('refresh', loadContacts);
-    s.on('status', ({ id, status }) => {
-      const m = state.messages.find((x) => x.id === id);
+    s.on('status', ({ id, oldId, status }) => {
+      const m = state.messages.find((x) => x.id === id || (oldId && x.id === oldId));
       if (m) {
         m.status = status;
-        const tick = document.querySelector(`[data-id="${CSS.escape(id)}"] .tick`);
-        if (tick) paintTick(tick, status);
+        if (id && m.id !== id) m.id = id;
+        const targetId = oldId || id;
+        const el = document.querySelector(`[data-id="${CSS.escape(targetId)}"]`) ||
+                   document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+        if (el) {
+          el.dataset.id = id;
+          const tick = el.querySelector('.tick');
+          if (tick) paintTick(tick, status);
+        }
       }
     });
   }
@@ -309,13 +316,39 @@
       return;
     }
 
-    if (active && !state.messages.some((x) => x.id === m.id)) {
-      state.messages.push(m);
-      appendMessage(m);
-      if (m.direction === 'in') {
-        state.windowOpen = true;
-        updateComposer();
-        fetch(chatUrl(m, 'messages?sync=0')); // mark read
+    if (active) {
+      if (m.direction === 'out') {
+        // Find existing matching outgoing message (by ID or content within 45 seconds)
+        const matchIdx = state.messages.findIndex((x) =>
+          x.id === m.id ||
+          (x.direction === 'out' &&
+           ((m.type === 'text' && x.body === m.body) || (m.type !== 'text' && (x.type === m.type || x.body === m.body))) &&
+           Math.abs((x.ts || 0) - (m.ts || 0)) < 45000)
+        );
+
+        if (matchIdx >= 0) {
+          const old = state.messages[matchIdx];
+          const oldId = old.id;
+          state.messages[matchIdx] = { ...old, ...m, id: m.id || old.id };
+          const el = document.querySelector(`.msg[data-id="${CSS.escape(oldId)}"]`);
+          if (el) {
+            el.dataset.id = m.id || oldId;
+            const tick = el.querySelector('.tick');
+            if (tick) paintTick(tick, m.status || 'sent');
+          }
+          loadContacts();
+          return;
+        }
+      }
+
+      if (!state.messages.some((x) => x.id === m.id)) {
+        state.messages.push(m);
+        appendMessage(m);
+        if (m.direction === 'in') {
+          state.windowOpen = true;
+          updateComposer();
+          fetch(chatUrl(m, 'messages?sync=0')); // mark read
+        }
       }
     }
     if (m.direction === 'in' && (!active || document.hidden)) beep();
@@ -751,7 +784,7 @@
         sentByMe.add(row.id);
         const idx = state.messages.findIndex((m) => m.id === tempId);
         if (idx >= 0) state.messages[idx] = row;
-        const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+        const el = document.querySelector(`.msg[data-id="${CSS.escape(tempId)}"]`);
         if (el) {
           el.dataset.id = row.id;
           const tick = el.querySelector('.tick');
@@ -760,7 +793,7 @@
       }
       loadContacts();
     } catch (err) {
-      const el = document.querySelector(`.msg[data-id="${tempId}"]`);
+      const el = document.querySelector(`.msg[data-id="${CSS.escape(tempId)}"]`);
       if (el) {
         const tick = el.querySelector('.tick');
         if (tick) paintTick(tick, 'failed');

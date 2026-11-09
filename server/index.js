@@ -212,8 +212,12 @@ async function handleWebhook(body) {
           ts,
         }, custName);
         if (row) {
-          emitFor('message', row, line, from);
-          refreshAll();
+          if (row._isUpdate) {
+            emitFor('status', { id: row.id, oldId: row._oldId, status: row.status || 'sent', line, phone: from }, line, from);
+          } else {
+            emitFor('message', row, line, from);
+            refreshAll();
+          }
         }
       }
 

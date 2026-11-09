@@ -37,6 +37,25 @@ try {
   db.exec('ALTER TABLE contacts ADD COLUMN conv_id INTEGER');
 } catch (_) {}
 
+// One-time startup cleanup: remove duplicate outgoing messages created by webhook/REST mismatch
+try {
+  db.exec(`
+    DELETE FROM messages
+    WHERE rowid IN (
+      SELECT m1.rowid
+      FROM messages m1
+      JOIN messages m2 ON m1.line = m2.line
+                      AND m1.phone = m2.phone
+                      AND m1.direction = 'out'
+                      AND m2.direction = 'out'
+                      AND m1.type = m2.type
+                      AND m1.body = m2.body
+                      AND m1.rowid < m2.rowid
+                      AND ABS(m1.ts - m2.ts) < 45000
+    );
+  `);
+} catch (_) {}
+
 const previewOf = (m) =>
   m.type === 'text' ? m.body : ({ image: '📷 صورة', audio: '🎤 رسالة صوتية', document: '📄 ملف' }[m.type] || 'رسالة');
 
@@ -52,6 +71,38 @@ export function saveMessage(m, contactName) {
     }
     return null;
   }
+
+  // Deduplication for outgoing messages:
+  // If an outgoing message with identical content was recorded in the last 45 seconds,
+  // update its ID to the official wamid / provider ID rather than creating a duplicate row!
+  if (m.direction === 'out') {
+    const recent = db.prepare(`
+      SELECT * FROM messages
+      WHERE line = ? AND phone = ? AND direction = 'out'
+        AND (
+          (type = 'text' AND body = ?) OR
+          (type != 'text' AND (type = ? OR (media_url IS NOT NULL AND media_url = ?)))
+        )
+        AND ts >= ? - 45000 AND ts <= ? + 45000
+      ORDER BY ts DESC LIMIT 1
+    `).get(m.line, m.phone, m.body ?? '', m.type ?? '', m.media_url ?? '', m.ts, m.ts);
+
+    if (recent) {
+      const targetId = (m.id && m.id.startsWith('wamid')) ? m.id : recent.id;
+      db.prepare(`
+        UPDATE messages
+        SET id = ?,
+            status = CASE WHEN ? = 'failed' THEN 'failed' ELSE COALESCE(?, status) END,
+            media_url = COALESCE(?, media_url),
+            mime = COALESCE(?, mime)
+        WHERE id = ?
+      `).run(targetId, m.status, m.status, m.media_url, m.mime, recent.id);
+
+      const updated = db.prepare('SELECT * FROM messages WHERE id = ?').get(targetId);
+      return { ...updated, _isUpdate: true, _oldId: recent.id };
+    }
+  }
+
   db.prepare(
     `INSERT INTO messages (id, line, phone, direction, type, body, media_url, media_id, mime, filename, status, ts)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,

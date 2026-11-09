@@ -179,19 +179,92 @@ async function sendNativeMedia({ to, type, mediaUrl, caption }) {
   return data.uuid || data.id || `live_${Date.now()}`;
 }
 
+/** Send native standalone text via Live Chat session endpoint (no quoting / no reply context) */
+async function sendNativeText({ to, text }) {
+  let convId = await getConversationId(to);
+  if (!convId) {
+    conversationIdCache.clear();
+    convId = await getConversationId(to);
+  }
+
+  if (!convId) {
+    console.warn('[sendNativeText] Could not find conversation_id for phone', to);
+    return null;
+  }
+
+  const payload = {
+    conversation_id: convId,
+    type: 'text',
+    text: text,
+    module: 'whatsapp',
+  };
+
+  console.log('[sendNativeText] Sending via /user/messages:', JSON.stringify(payload));
+
+  let sess = await getBoostrifySession();
+  let res = await fetch('https://boostrify.pro/user/messages', {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'X-XSRF-TOKEN': sess.xsrfToken,
+      'Cookie': sess.authCookieHeader,
+      'Referer': 'https://boostrify.pro/user/live-chat',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (res.status === 419 || res.status === 401) {
+    console.warn('[sendNativeText] Session expired (status', res.status, '), re-authenticating...');
+    sess = await getBoostrifySession(true);
+    res = await fetch('https://boostrify.pro/user/messages', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'X-XSRF-TOKEN': sess.xsrfToken,
+        'Cookie': sess.authCookieHeader,
+        'Referer': 'https://boostrify.pro/user/live-chat',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  const data = await res.json().catch(() => ({}));
+  console.log('[sendNativeText] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid } : data));
+
+  if (!res.ok || (!data.uuid && !data.id)) {
+    throw new Error(`Boostrify live-chat text send failed: ${JSON.stringify(data)}`);
+  }
+
+  return data.uuid || data.id || `live_${Date.now()}`;
+}
+
 /** Send text / image / audio / document. Returns the provider message id. */
 export async function sendMessage({ line, to, type, body, mediaUrl, filename }) {
-  // If sending media (image or audio) and we have Boostrify credentials, send native media!
-  if (mediaUrl && (b.email || b.password)) {
-    try {
-      const uuid = await sendNativeMedia({ to, type, mediaUrl, caption: body });
-      if (uuid) return uuid;
-    } catch (err) {
-      console.warn('[sendNativeMedia failed, falling back to REST API]:', err.message);
+  // If we have Boostrify credentials, send through the Live Chat session endpoint.
+  // This ensures outgoing messages are sent fast and STANDALONE (NOT quoting the previous message).
+  if (b.email || b.password) {
+    if (mediaUrl) {
+      try {
+        const uuid = await sendNativeMedia({ to, type, mediaUrl, caption: body });
+        if (uuid) return uuid;
+      } catch (err) {
+        console.warn('[sendNativeMedia failed, falling back to REST API]:', err.message);
+      }
+    } else if (body && body.trim()) {
+      try {
+        const uuid = await sendNativeText({ to, text: body.trim() });
+        if (uuid) return uuid;
+      } catch (err) {
+        console.warn('[sendNativeText failed, falling back to REST API]:', err.message);
+      }
     }
   }
 
-  // If Boostrify REST API credentials are used
+  // Fallback to Boostrify REST API credentials
   if (b.appKey && b.authKey) {
     const cleanTo = String(to).replace(/[^0-9]/g, '');
     const payload = {
