@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { config } from './config.js';
 import { getContactConvId, setContactConvId } from './db.js';
 
@@ -81,6 +83,12 @@ async function getBoostrifySession(forceRefresh = false) {
     redirect: 'manual',
   });
 
+  if (postRes.status >= 400) {
+    const errText = await postRes.text().catch(() => '');
+    sessionState = { xsrfToken: '', sessionCookie: '', authCookieHeader: '', lastLogin: 0 };
+    throw new Error(`Boostrify login failed (${postRes.status}): ${errText.slice(0, 200)}`);
+  }
+
   const postCookies = postRes.headers.getSetCookie ? postRes.headers.getSetCookie() : [postRes.headers.get('set-cookie')];
   if (postCookies && postCookies.length) {
     for (const c of postCookies) {
@@ -106,8 +114,53 @@ async function getBoostrifySession(forceRefresh = false) {
   return sessionState;
 }
 
+/** Perform an authenticated POST to Boostrify's web session endpoints with automatic 401/419 retry. */
+async function sessionPost(endpoint, { jsonBody, formData } = {}) {
+  const doReq = async (forceRefresh) => {
+    const sess = await getBoostrifySession(forceRefresh);
+    const hdrs = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Accept': 'application/json, text/plain, */*',
+      'X-XSRF-TOKEN': sess.xsrfToken,
+      'Cookie': sess.authCookieHeader,
+      'Referer': 'https://boostrify.pro/user/live-chat',
+    };
+    if (jsonBody !== undefined) hdrs['Content-Type'] = 'application/json';
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: hdrs,
+      body: jsonBody !== undefined ? JSON.stringify(jsonBody) : formData,
+    });
+  };
+
+  let res = await doReq(false);
+  if (res.status === 419 || res.status === 401) {
+    console.warn(`[sessionPost] Session expired on ${endpoint} (${res.status}), re-authenticating...`);
+    res = await doReq(true);
+  }
+  return res;
+}
+
+/** Upload local media file directly to Boostrify's storage so it sends natively (not as an external link). */
+async function uploadMediaToBoostrify({ filePath, mediaType, mime, filename }) {
+  const buf = await readFile(filePath);
+  const uploadEndpoint = mediaType === 'audio'
+    ? 'https://boostrify.pro/user/whatsapp/upload-voice'
+    : 'https://boostrify.pro/user/whatsapp/upload-media';
+  const fd = new FormData();
+  fd.append('file', new Blob([buf], { type: mime || 'application/octet-stream' }), filename || basename(filePath));
+
+  const res = await sessionPost(uploadEndpoint, { formData: fd });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.url) {
+    throw new Error(`Boostrify upload failed (${res.status}): ${JSON.stringify(data)}`);
+  }
+  console.log('[uploadMediaToBoostrify] Uploaded to Boostrify:', data.url);
+  return data.url;
+}
+
 /** Send native media via Live Chat session endpoint */
-async function sendNativeMedia({ to, type, mediaUrl, caption }) {
+async function sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, caption }) {
   const directUrl = mediaUrl.includes('/v/') ? mediaUrl.replace('/v/', '/uploads/') : mediaUrl;
   let convId = await getConversationId(to);
   if (!convId) {
@@ -127,48 +180,23 @@ async function sendNativeMedia({ to, type, mediaUrl, caption }) {
     else if (/\.(jpeg|jpg|png|webp|gif)$/i.test(directUrl)) mediaType = 'image';
     else mediaType = 'document';
   }
+
+  let attachmentUrl = directUrl;
+  if (filePath) {
+    attachmentUrl = await uploadMediaToBoostrify({ filePath, mediaType, mime, filename });
+  }
+
   const payload = {
     conversation_id: convId,
     module: 'whatsapp',
     type: mediaType,
-    attachments: [directUrl],
+    attachments: [attachmentUrl],
     caption: caption || '',
     reply_message_uuid: null,
   };
 
   console.log('[sendNativeMedia] Sending via /user/messages:', JSON.stringify(payload));
-
-  let sess = await getBoostrifySession();
-  let res = await fetch('https://boostrify.pro/user/messages', {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json, text/plain, */*',
-      'X-XSRF-TOKEN': sess.xsrfToken,
-      'Cookie': sess.authCookieHeader,
-      'Referer': 'https://boostrify.pro/',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (res.status === 419 || res.status === 401) {
-    console.warn('[sendNativeMedia] Session expired (status', res.status, '), re-authenticating...');
-    sess = await getBoostrifySession(true);
-    res = await fetch('https://boostrify.pro/user/messages', {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/plain, */*',
-        'X-XSRF-TOKEN': sess.xsrfToken,
-        'Cookie': sess.authCookieHeader,
-        'Referer': 'https://boostrify.pro/',
-      },
-      body: JSON.stringify(payload),
-    });
-  }
-
+  const res = await sessionPost('https://boostrify.pro/user/messages', { jsonBody: payload });
   const data = await res.json().catch(() => ({}));
   console.log('[sendNativeMedia] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid, type: data.type } : data));
 
@@ -200,38 +228,7 @@ async function sendNativeText({ to, text }) {
   };
 
   console.log('[sendNativeText] Sending via /user/messages:', JSON.stringify(payload));
-
-  let sess = await getBoostrifySession();
-  let res = await fetch('https://boostrify.pro/user/messages', {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json, text/plain, */*',
-      'X-XSRF-TOKEN': sess.xsrfToken,
-      'Cookie': sess.authCookieHeader,
-      'Referer': 'https://boostrify.pro/user/live-chat',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (res.status === 419 || res.status === 401) {
-    console.warn('[sendNativeText] Session expired (status', res.status, '), re-authenticating...');
-    sess = await getBoostrifySession(true);
-    res = await fetch('https://boostrify.pro/user/messages', {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json, text/plain, */*',
-        'X-XSRF-TOKEN': sess.xsrfToken,
-        'Cookie': sess.authCookieHeader,
-        'Referer': 'https://boostrify.pro/user/live-chat',
-      },
-      body: JSON.stringify(payload),
-    });
-  }
-
+  const res = await sessionPost('https://boostrify.pro/user/messages', { jsonBody: payload });
   const data = await res.json().catch(() => ({}));
   console.log('[sendNativeText] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid } : data));
 
@@ -243,13 +240,13 @@ async function sendNativeText({ to, text }) {
 }
 
 /** Send text / image / audio / document. Returns the provider message id. */
-export async function sendMessage({ line, to, type, body, mediaUrl, filename }) {
+export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mime, filename }) {
   // If we have Boostrify credentials, send through the Live Chat session endpoint.
   // This ensures outgoing messages are sent fast and STANDALONE (NOT quoting the previous message).
   if (b.email || b.password) {
     if (mediaUrl) {
       try {
-        const uuid = await sendNativeMedia({ to, type, mediaUrl, caption: body });
+        const uuid = await sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, caption: body });
         if (uuid) return uuid;
       } catch (err) {
         console.warn('[sendNativeMedia failed, falling back to REST API]:', err.message);
@@ -325,15 +322,22 @@ export async function getConversationId(phone) {
   }
 
   try {
-    const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01`);
-    const json = await res.json();
-    for (const c of json?.data || []) {
-      const p = String(c.customer?.phone || '').replace(/\D/g, '');
-      if (p && c.id) {
-        conversationIdCache.set(p, c.id);
-        setContactConvId(p, c.id);
+    let page = 1;
+    let lastPage = 1;
+    do {
+      const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01&page=${page}`);
+      const json = await res.json();
+      lastPage = Number(json?.last_page || 1);
+      for (const c of json?.data || []) {
+        const p = String(c.customer?.phone || '').replace(/\D/g, '');
+        if (p && c.id) {
+          conversationIdCache.set(p, c.id);
+          setContactConvId(p, c.id);
+        }
       }
-    }
+      if (conversationIdCache.has(clean)) break;
+      page++;
+    } while (page <= Math.min(lastPage, 25));
     return conversationIdCache.get(clean) || null;
   } catch (err) {
     console.warn('[getConversationId] failed:', err.message);

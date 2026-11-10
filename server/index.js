@@ -501,7 +501,8 @@ app.post('/api/contacts/:line/:phone/send', requireAuth, upload.single('file'), 
 
         mediaUrl = await makePublicMediaUrl(file);
       } else if (!text) return res.status(400).json({ error: 'empty message' });
-      id = config.demo ? `demo_out_${Date.now()}` : await sendMessage({ line, to, type, body: text, mediaUrl, filename });
+      const filePath = file ? resolve(UPLOAD_DIR, file.filename) : undefined;
+      id = config.demo ? `demo_out_${Date.now()}` : await sendMessage({ line, to, type, body: text, mediaUrl, filePath, mime, filename });
     }
 
     const wasUnowned = contact.owner == null;
