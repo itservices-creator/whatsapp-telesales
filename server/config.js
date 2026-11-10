@@ -28,7 +28,7 @@ export const config = {
     appKey: e.BOOSTRIFY_APP_KEY || e.BOOSTRIFY_API_KEY || '',
     authKey: e.BOOSTRIFY_AUTH_KEY || '',
     email: e.BOOSTRIFY_EMAIL || 'itservices@taager.com',
-    password: e.BOOSTRIFY_PASSWORD || 'NEStu8zy',
+    password: e.BOOSTRIFY_PASSWORD || 'P@$$w000rd@2028#',
     phoneId: e.BOOSTRIFY_PHONE_ID || '',
     sendPath: e.BOOSTRIFY_SEND_PATH || '/whatsapp/message',
     historyPath: e.BOOSTRIFY_HISTORY_PATH || '/whatsapp/v1/conversations',

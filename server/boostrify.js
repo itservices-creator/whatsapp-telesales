@@ -42,7 +42,7 @@ async function getBoostrifySession(forceRefresh = false) {
   }
 
   const email = b.email || 'itservices@taager.com';
-  const password = b.password || 'NEStu8zy';
+  const password = b.password || 'P@$$w000rd@2028#';
 
   console.log('[Boostrify Session] Logging in as', email, '...');
   const getRes = await fetch('https://boostrify.pro/login', {
