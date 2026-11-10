@@ -42,7 +42,7 @@ async function getBoostrifySession(forceRefresh = false) {
   }
 
   const email = b.email || 'itservices@taager.com';
-  const password = b.password || 'P@$$w000rd@2028#';
+  const password = b.password || 'T@Ag^er@2028#';
 
   console.log('[Boostrify Session] Logging in as', email, '...');
   const getRes = await fetch('https://boostrify.pro/login', {
@@ -83,7 +83,8 @@ async function getBoostrifySession(forceRefresh = false) {
     redirect: 'manual',
   });
 
-  if (postRes.status >= 400) {
+  // Note: Inertia returns 409 with X-Inertia-Location on successful login redirect
+  if (postRes.status >= 400 && postRes.status !== 409) {
     const errText = await postRes.text().catch(() => '');
     sessionState = { xsrfToken: '', sessionCookie: '', authCookieHeader: '', lastLogin: 0 };
     throw new Error(`Boostrify login failed (${postRes.status}): ${errText.slice(0, 200)}`);
@@ -371,7 +372,7 @@ export async function fetchHistory(line, contact) {
               }
               body = '';
             }
-          } catch {}
+          } catch { }
         }
         return {
           id,
@@ -475,6 +476,6 @@ export async function sendTemplate({ line, to, name, language, params = [] }) {
 
 // Pre-warm session & conversation cache in background so sending has zero latency
 setTimeout(() => {
-  getBoostrifySession().catch(() => {});
-  getConversationId('1').catch(() => {});
+  getBoostrifySession().catch(() => { });
+  getConversationId('1').catch(() => { });
 }, 1000);
