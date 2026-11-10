@@ -965,12 +965,12 @@
   function renderLineCheckboxes() {
     const box = $('u-lines-checks');
     if (!box) return;
-    box.innerHTML = (state.allLines || state.lines).map((l, idx) => `
-      <label class="check-item">
-        <input type="radio" name="u_line" value="${esc(l.id)}" ${idx === 0 ? 'checked' : ''} />
-        <span>${esc(l.name)}</span>
-      </label>
-    `).join('');
+    const allList = state.allLines || state.lines || [];
+    box.innerHTML = `
+      <select id="u-line-select" name="u_line" style="margin-top:0">
+        ${allList.map((l, idx) => `<option value="${esc(l.id)}" ${idx === 0 ? 'selected' : ''}>📱 ${esc(l.name)}</option>`).join('')}
+      </select>
+    `;
   }
 
   function userLinesPills(u, canAssignLine) {
@@ -984,17 +984,15 @@
     const rawAllowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
     const assignedId = rawAllowed[0] || String(allList[0]?.id || '191');
     if (!canAssignLine) {
-      return `<div class="user-lines-tags"><span class="line-pill">${esc(lineName(assignedId))}</span></div>`;
+      return `<div class="user-lines-tags"><span class="line-pill">📱 ${esc(lineName(assignedId))}</span></div>`;
     }
-    return `<div class="user-lines-tags" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">` +
-      allList.map((l) => {
-        const checked = String(l.id) === String(assignedId);
-        return `<label class="line-pill" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;background:${checked ? 'rgba(0,168,132,0.18)' : 'rgba(255,255,255,0.05)'};color:${checked ? '#00a884' : '#8696a0'};border:1px solid ${checked ? '#00a884' : '#2a3942'}">
-          <input type="radio" name="emp_line_${u.id}" data-line-toggle="${esc(l.id)}" data-uid="${u.id}" ${checked ? 'checked' : ''} style="accent-color:#00a884;margin:0;cursor:pointer" />
-          <span>${esc(l.name)}</span>
-        </label>`;
-      }).join('') +
-      `</div>`;
+    return `
+      <div class="user-lines-tags">
+        <select class="emp-line-select" data-line-select data-uid="${u.id}">
+          ${allList.map((l) => `<option value="${esc(l.id)}" ${String(l.id) === String(assignedId) ? 'selected' : ''}>📱 ${esc(l.name)}</option>`).join('')}
+        </select>
+      </div>
+    `;
   }
 
   function syncRolePermUI() {
@@ -1049,10 +1047,10 @@
   });
 
   $('users-list').addEventListener('change', async (e) => {
-    const rb = e.target.closest('input[data-line-toggle]');
-    if (!rb) return;
-    const uid = Number(rb.dataset.uid);
-    const chosenLine = rb.dataset.lineToggle;
+    const sel = e.target.closest('select[data-line-select]');
+    if (!sel) return;
+    const uid = Number(sel.dataset.uid);
+    const chosenLine = sel.value;
     $('admin-error').textContent = '';
     try {
       await api(`/api/users/${uid}`, jsonOpts('PATCH', { allowed_lines: [chosenLine] }));
@@ -1074,18 +1072,6 @@
         if (!password) return;
         if (password.length < 4) throw new Error(t('min_pass_err'));
         await api(`/api/users/${u.id}`, jsonOpts('PATCH', { password }));
-      } else if (b.dataset.act === 'lines') {
-        const currentAllowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
-        const optionsText = (state.allLines || state.lines)
-          .map((l, i) => `${i + 1}: ${l.name} (${l.id}) [${currentAllowed.includes(l.id) ? t('enabled') : t('disabled')}]`)
-          .join('\n');
-        const promptMsg = `${t('select_lines_prompt')} (${u.name}):\n(1, 2, ...)\n\n${optionsText}`;
-        const input = prompt(promptMsg);
-        if (input === null) return;
-        const choices = input.split(/[,،]/).map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-        const allList = (state.allLines || state.lines);
-        const newAllowed = choices.map((c) => allList[c - 1]?.id).filter(Boolean);
-        await api(`/api/users/${u.id}`, jsonOpts('PATCH', { allowed_lines: newAllowed }));
       } else if (b.dataset.act === 'perm') {
         await api(`/api/users/${u.id}`, jsonOpts('PATCH', { can_manage_users: !u.can_manage_users }));
       } else {
@@ -1097,11 +1083,7 @@
 
   $('user-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const checkedLines = [...document.querySelectorAll('input[name="u_line"]:checked')].map((i) => i.value);
-    if (!checkedLines.length) {
-      $('admin-error').textContent = t('require_one_line_err');
-      return;
-    }
+    const chosenLine = $('u-line-select')?.value || (state.allLines || state.lines)?.[0]?.id || '191';
     try {
       const selectedRole = $('u-role') ? $('u-role').value : 'agent';
       const isSuper = state.user?.role === 'super_admin';
@@ -1111,7 +1093,7 @@
         username: $('u-username').value,
         password: $('u-password').value,
         role: selectedRole,
-        allowed_lines: checkedLines,
+        allowed_lines: [chosenLine],
         can_manage_users: canManage ? 1 : 0,
       }));
       $('user-form').reset();
