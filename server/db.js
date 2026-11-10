@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS users (
 );`);
 try { db.exec('ALTER TABLE contacts ADD COLUMN owner INTEGER'); } catch { /* already exists */ }
 try { db.exec("ALTER TABLE users ADD COLUMN allowed_lines TEXT DEFAULT ''"); } catch { /* already exists */ }
+try { db.exec('ALTER TABLE users ADD COLUMN can_manage_users INTEGER NOT NULL DEFAULT 0'); } catch { /* already exists */ }
 
 export const hashPassword = (pw) => {
   const salt = randomBytes(16).toString('hex');
@@ -171,13 +172,13 @@ const verifyHash = (pw, stored) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
-const pub = 'id, username, name, role, allowed_lines, active';
+const pub = 'id, username, name, role, allowed_lines, active, can_manage_users';
 export const listUsers = () => db.prepare(`SELECT ${pub} FROM users ORDER BY id`).all();
 export const getUser = (id) => (id == null ? undefined : db.prepare(`SELECT ${pub} FROM users WHERE id = ?`).get(id));
-export const createUser = ({ username, name, password, role = 'agent', allowed_lines = '' }) =>
-  db.prepare('INSERT INTO users (username, name, pass, role, allowed_lines) VALUES (?,?,?,?,?)')
-    .run(username.trim().toLowerCase(), name.trim(), hashPassword(password), role, Array.isArray(allowed_lines) ? allowed_lines.join(',') : allowed_lines).lastInsertRowid;
-export const updateUser = (id, { name, password, role, allowed_lines, active }) => {
+export const createUser = ({ username, name, password, role = 'agent', allowed_lines = '', can_manage_users = 0 }) =>
+  db.prepare('INSERT INTO users (username, name, pass, role, allowed_lines, can_manage_users) VALUES (?,?,?,?,?,?)')
+    .run(username.trim().toLowerCase(), name.trim(), hashPassword(password), role, Array.isArray(allowed_lines) ? allowed_lines.join(',') : allowed_lines, can_manage_users ? 1 : 0).lastInsertRowid;
+export const updateUser = (id, { name, password, role, allowed_lines, active, can_manage_users }) => {
   if (name) db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, id);
   if (password) db.prepare('UPDATE users SET pass = ? WHERE id = ?').run(hashPassword(password), id);
   if (role) db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);
@@ -186,6 +187,7 @@ export const updateUser = (id, { name, password, role, allowed_lines, active }) 
     db.prepare('UPDATE users SET allowed_lines = ? WHERE id = ?').run(val, id);
   }
   if (active !== undefined) db.prepare('UPDATE users SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+  if (can_manage_users !== undefined) db.prepare('UPDATE users SET can_manage_users = ? WHERE id = ?').run(can_manage_users ? 1 : 0, id);
 };
 export function authenticate(username, password) {
   const u = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(String(username).trim().toLowerCase());

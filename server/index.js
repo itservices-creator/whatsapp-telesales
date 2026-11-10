@@ -94,8 +94,9 @@ const requireAuth = (req, res, next) => {
 const requireAdmin = (req, res, next) =>
   (req.user.role === 'super_admin' || req.user.role === 'admin') ? next() : res.status(403).json({ error: 'forbidden' });
 
-const requireSuperAdmin = (req, res, next) =>
-  req.user.role === 'super_admin' ? next() : res.status(403).json({ error: 'صلاحية المدير العام فقط (Super Admin)' });
+const canManageUsers = (u) => u && (u.role === 'super_admin' || (u.role === 'admin' && Boolean(u.can_manage_users)));
+const requireUserManager = (req, res, next) =>
+  canManageUsers(req.user) ? next() : res.status(403).json({ error: 'صلاحية المدير العام أو المشرف المفوض فقط' });
 
 /** Deliver realtime events only to the admin room and the chat owner. */
 function emitFor(event, payload, line, phone) {
@@ -310,21 +311,32 @@ app.get('/api/templates', requireAuth, (_req, res) => {
 
 
 
-// --- employees (admin / super_admin) ---
+// --- employees (super_admin or authorized admin) ---
 app.get('/api/users', requireAuth, (_req, res) => res.json(listUsers()));
-app.post('/api/users', requireAuth, requireSuperAdmin, (req, res) => {
-  const { username, name, password, role, allowed_lines } = req.body || {};
+app.post('/api/users', requireAuth, requireUserManager, (req, res) => {
+  const { username, name, password, role, allowed_lines, can_manage_users } = req.body || {};
   if (!username || !name || !password || String(password).length < 4) return res.status(400).json({ error: 'بيانات ناقصة (كلمة المرور 4 أحرف على الأقل)' });
+  if (req.user.role !== 'super_admin' && role === 'super_admin') {
+    return res.status(403).json({ error: 'لا يمكنك إنشاء حساب مدير عام (Super Admin)' });
+  }
   try {
     const validRole = role === 'super_admin' ? 'super_admin' : (role === 'admin' ? 'admin' : 'agent');
-    res.json(getUser(createUser({ username, name, password, role: validRole, allowed_lines })));
+    const allowUserMgmt = req.user.role === 'super_admin' && validRole === 'admin' && Boolean(can_manage_users) ? 1 : 0;
+    res.json(getUser(createUser({ username, name, password, role: validRole, allowed_lines, can_manage_users: allowUserMgmt })));
   } catch { res.status(409).json({ error: 'اسم المستخدم موجود بالفعل' }); }
 });
-app.patch('/api/users/:id', requireAuth, requireSuperAdmin, (req, res) => {
+app.patch('/api/users/:id', requireAuth, requireUserManager, (req, res) => {
   const id = Number(req.params.id);
-  if (!getUser(id)) return res.sendStatus(404);
+  const target = getUser(id);
+  if (!target) return res.sendStatus(404);
   if (id === req.user.id && req.body.active === false) return res.status(400).json({ error: 'لا يمكنك تعطيل حسابك' });
-  updateUser(id, req.body || {});
+  const updates = { ...(req.body || {}) };
+  if (req.user.role !== 'super_admin') {
+    if (target.role === 'super_admin') return res.status(403).json({ error: 'لا يمكنك تعديل حساب المدير العام' });
+    if (updates.role === 'super_admin') return res.status(403).json({ error: 'لا يمكنك ترقية مستخدم لمدير عام' });
+    delete updates.can_manage_users;
+  }
+  updateUser(id, updates);
   refreshAll();
   res.json(getUser(id));
 });

@@ -64,6 +64,10 @@
       role_super_admin: 'مدير عام',
       role_admin: 'مشرف / أدمن',
       role_agent: 'موظف',
+      can_manage_users_label: '🔑 السماح لهذا الأدمن بإنشاء وإدارة المستخدمين',
+      grant_user_mgmt: 'منح صلاحية اليوزرات',
+      revoke_user_mgmt: 'سحب صلاحية اليوزرات',
+      badge_user_mgmt: '🔑 يدير المستخدمين',
       today: 'اليوم',
       yesterday: 'أمس',
       photo_preview: '📷 صورة',
@@ -134,6 +138,10 @@
       role_super_admin: 'Super Admin',
       role_admin: 'Admin',
       role_agent: 'Agent',
+      can_manage_users_label: '🔑 Allow this Admin to create & manage users',
+      grant_user_mgmt: 'Grant User Mgmt',
+      revoke_user_mgmt: 'Revoke User Mgmt',
+      badge_user_mgmt: '🔑 Can Manage Users',
       today: 'Today',
       yesterday: 'Yesterday',
       photo_preview: '📷 Photo',
@@ -270,7 +278,8 @@
     $('app').classList.remove('hidden');
     const roleLabel = state.user.role === 'super_admin' ? t('role_super_admin') : (state.user.role === 'admin' ? t('role_admin') : '');
     $('whoami').textContent = `${state.user.name}${roleLabel ? ' • ' + roleLabel : ''}`;
-    $('admin-btn').classList.toggle('hidden', state.user.role !== 'super_admin');
+    const canManageUsers = state.user.role === 'super_admin' || (state.user.role === 'admin' && Boolean(state.user.can_manage_users));
+    $('admin-btn').classList.toggle('hidden', !canManageUsers);
     state.users = await api('/api/users');
     state.templates = await api('/api/templates');
     const info = await api('/api/lines');
@@ -289,7 +298,17 @@
     s.on('connect', () => $('conn').classList.add('on'));
     s.on('disconnect', () => $('conn').classList.remove('on'));
     s.on('message', onIncoming);
-    s.on('refresh', loadContacts);
+    s.on('refresh', async () => {
+      loadContacts();
+      try {
+        const me = await api('/api/me');
+        if (me) {
+          state.user = me;
+          const canManageUsers = me.role === 'super_admin' || (me.role === 'admin' && Boolean(me.can_manage_users));
+          $('admin-btn').classList.toggle('hidden', !canManageUsers);
+        }
+      } catch { /* ignore */ }
+    });
     s.on('status', ({ id, oldId, status }) => {
       const m = state.messages.find((x) => x.id === id || (oldId && x.id === oldId));
       if (m) {
@@ -925,18 +944,40 @@
   }
 
   function userLinesPills(u) {
-    if (u.role === 'super_admin' || u.role === 'admin') return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span></div>`;
+    if (u.role === 'super_admin' || u.role === 'admin') {
+      const permBadge = (u.role === 'admin' && u.can_manage_users)
+        ? `<span class="line-pill" style="background:#fef3c7;color:#92400e;border-color:#fde68a">${t('badge_user_mgmt')}</span>`
+        : '';
+      return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span>${permBadge}</div>`;
+    }
     const allowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
     if (!allowed.length) return `<div class="user-lines-tags"><span class="line-pill none">${t('no_lines_allowed')}</span></div>`;
     return `<div class="user-lines-tags">${allowed.map((id) => `<span class="line-pill">${esc(lineName(id))}</span>`).join('')}</div>`;
   }
 
+  function syncRolePermUI() {
+    const isSuper = state.user?.role === 'super_admin';
+    const roleSel = $('u-role');
+    if (roleSel) {
+      const superOpt = roleSel.querySelector('option[value="super_admin"]');
+      if (superOpt) superOpt.hidden = !isSuper;
+      if (!isSuper && roleSel.value === 'super_admin') roleSel.value = 'agent';
+    }
+    if ($('u-perm-box')) {
+      $('u-perm-box').classList.toggle('hidden', !(isSuper && roleSel?.value === 'admin'));
+    }
+  }
+  if ($('u-role')) $('u-role').addEventListener('change', syncRolePermUI);
+
   async function renderUsers() {
     state.users = await api('/api/users');
     renderLineCheckboxes();
+    syncRolePermUI();
+    const isSuper = state.user?.role === 'super_admin';
     $('users-list').innerHTML = state.users.map((u) => {
       const roleText = u.role === 'super_admin' ? t('role_super_admin') : (u.role === 'admin' ? t('role_admin') : t('role_agent'));
       const isPrivileged = u.role === 'super_admin' || u.role === 'admin';
+      const canEditTarget = isSuper || u.role !== 'super_admin';
       return `
       <div class="user-row ${u.active ? '' : 'off'}">
         <div class="avatar" style="width:36px;height:36px;font-size:15px;background:hsl(${hue(u.username)} 45% 38%)">${esc(u.name.charAt(0))}</div>
@@ -945,9 +986,10 @@
           ${userLinesPills(u)}
         </div>
         <div class="user-actions">
-          <button class="btn ghost small" data-act="pw" data-id="${u.id}">${t('change_password')}</button>
-          ${!isPrivileged ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
-          ${u.id !== state.user.id ? `<button class="btn ghost small" data-act="toggle" data-id="${u.id}">${u.active ? t('deactivate_btn') : t('activate_btn')}</button>` : ''}
+          ${canEditTarget ? `<button class="btn ghost small" data-act="pw" data-id="${u.id}">${t('change_password')}</button>` : ''}
+          ${(!isPrivileged && canEditTarget) ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
+          ${(isSuper && u.role === 'admin') ? `<button class="btn ghost small" data-act="perm" data-id="${u.id}">${u.can_manage_users ? t('revoke_user_mgmt') : t('grant_user_mgmt')}</button>` : ''}
+          ${(u.id !== state.user.id && canEditTarget) ? `<button class="btn ghost small" data-act="toggle" data-id="${u.id}">${u.active ? t('deactivate_btn') : t('activate_btn')}</button>` : ''}
         </div>
       </div>`;
     }).join('');
@@ -982,6 +1024,8 @@
         const allList = (state.allLines || state.lines);
         const newAllowed = choices.map((c) => allList[c - 1]?.id).filter(Boolean);
         await api(`/api/users/${u.id}`, jsonOpts('PATCH', { allowed_lines: newAllowed }));
+      } else if (b.dataset.act === 'perm') {
+        await api(`/api/users/${u.id}`, jsonOpts('PATCH', { can_manage_users: !u.can_manage_users }));
       } else {
         await api(`/api/users/${u.id}`, jsonOpts('PATCH', { active: !u.active }));
       }
@@ -998,14 +1042,18 @@
     }
     try {
       const selectedRole = $('u-role') ? $('u-role').value : 'agent';
+      const isSuper = state.user?.role === 'super_admin';
+      const canManage = isSuper && selectedRole === 'admin' && Boolean($('u-can-manage')?.checked);
       await api('/api/users', jsonOpts('POST', {
         name: $('u-name').value,
         username: $('u-username').value,
         password: $('u-password').value,
         role: selectedRole,
         allowed_lines: checkedLines,
+        can_manage_users: canManage ? 1 : 0,
       }));
       $('user-form').reset();
+      if ($('u-can-manage')) $('u-can-manage').checked = false;
       $('admin-error').textContent = '';
       await renderUsers();
     } catch (err) { $('admin-error').textContent = err.message; }

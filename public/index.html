@@ -163,9 +163,15 @@
           <input id="u-password" dir="ltr" placeholder="كلمة المرور" required />
           <select id="u-role">
             <option value="agent">موظف (Agent)</option>
-            <option value="admin">مشرف / أدمن (Admin - إسناد وتوزيع الشات فقط)</option>
+            <option value="admin">مشرف / أدمن (Admin)</option>
             <option value="super_admin">مدير عام (Super Admin - صلاحية كاملة)</option>
           </select>
+        </div>
+        <div id="u-perm-box" class="line-choices-box hidden">
+          <label class="check-item">
+            <input type="checkbox" id="u-can-manage" />
+            <span data-i18n="can_manage_users_label">🔑 السماح لهذا الأدمن بإنشاء وإدارة المستخدمين</span>
+          </label>
         </div>
         <div class="line-choices-box">
           <span class="choice-title" data-i18n="allowed_lines_title">الأرقام المسموح له بالرد والإرسال منها:</span>
