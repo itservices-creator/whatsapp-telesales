@@ -1,6 +1,8 @@
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { config } from './config.js';
+import { config, resolveLineId, getLineAppKey } from './config.js';
 import { getContactConvId, setContactConvId } from './db.js';
 
 const { boostrify: b } = config;
@@ -12,15 +14,18 @@ const { boostrify: b } = config;
 const url = (path, vars = {}) =>
   b.base + path.replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(vars[k] ?? (k === 'phone' ? b.phoneId : '')));
 
-const headers = (extra = {}) => ({
-  Accept: 'application/json',
-  ...(b.authKey ? { 'X-Auth-Key': b.authKey, 'X-App-Key': b.appKey } : {}),
-  ...(b.key && !b.authKey ? { Authorization: `Bearer ${b.key}` } : {}),
-  ...extra,
-});
+const headers = (extra = {}, lineId = null) => {
+  const appKey = lineId ? getLineAppKey(lineId) : b.appKey;
+  return {
+    Accept: 'application/json',
+    ...(b.authKey ? { 'X-Auth-Key': b.authKey, 'X-App-Key': appKey } : {}),
+    ...(b.key && !b.authKey ? { Authorization: `Bearer ${b.key}` } : {}),
+    ...extra,
+  };
+};
 
 async function call(u, opts = {}) {
-  const res = await fetch(u, { ...opts, headers: headers(opts.headers) });
+  const res = await fetch(u, { ...opts, headers: headers(opts.headers, opts.line) });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw Object.assign(new Error(`Boostrify ${res.status}: ${text.slice(0, 300)}`), { status: res.status });
@@ -34,85 +39,119 @@ let sessionState = {
   authCookieHeader: '',
   lastLogin: 0,
 };
+let loginPromise = null;
 
 async function getBoostrifySession(forceRefresh = false) {
   const now = Date.now();
   if (!forceRefresh && sessionState.authCookieHeader && (now - sessionState.lastLogin < 4 * 3600 * 1000)) {
     return sessionState;
   }
+  if (loginPromise) return loginPromise;
 
-  const email = b.email || 'itservices@taager.com';
-  const password = b.password || 'T@Ag^er@2028#';
+  loginPromise = (async () => {
+    try {
+      const email = b.email || 'itservices@taager.com';
+      const password = b.password || 'T@Ag^er@2028#';
 
-  console.log('[Boostrify Session] Logging in as', email, '...');
-  const getRes = await fetch('https://boostrify.pro/login', {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    },
-  });
+      console.log('[Boostrify Session] Logging in as', email, '...');
+      const getRes = await fetch('https://boostrify.pro/login', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
 
-  const rawCookies = getRes.headers.getSetCookie ? getRes.headers.getSetCookie() : [getRes.headers.get('set-cookie')];
-  let xsrfToken = '', sessionCookie = '';
+      const rawCookies = getRes.headers.getSetCookie ? getRes.headers.getSetCookie() : [getRes.headers.get('set-cookie')];
+      let xsrfToken = '', sessionCookie = '';
 
-  for (const c of rawCookies) {
-    if (c.includes('XSRF-TOKEN=')) {
-      const match = c.match(/XSRF-TOKEN=([^;]+)/);
-      if (match) xsrfToken = decodeURIComponent(match[1]);
-    }
-    if (c.includes('boostrify_pro_session=')) {
-      const match = c.match(/boostrify_pro_session=([^;]+)/);
-      if (match) sessionCookie = match[1];
-    }
-  }
-
-  const cookieHeader = `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`;
-
-  const postRes = await fetch('https://boostrify.pro/login', {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-      'Content-Type': 'application/json',
-      'Accept': 'application/json, text/plain, */*',
-      'X-XSRF-TOKEN': xsrfToken,
-      'X-Inertia': 'true',
-      'Cookie': cookieHeader,
-      'Referer': 'https://boostrify.pro/login',
-    },
-    body: JSON.stringify({ email, password, remember: true }),
-    redirect: 'manual',
-  });
-
-  // Note: Inertia returns 409 with X-Inertia-Location on successful login redirect
-  if (postRes.status >= 400 && postRes.status !== 409) {
-    const errText = await postRes.text().catch(() => '');
-    sessionState = { xsrfToken: '', sessionCookie: '', authCookieHeader: '', lastLogin: 0 };
-    throw new Error(`Boostrify login failed (${postRes.status}): ${errText.slice(0, 200)}`);
-  }
-
-  const postCookies = postRes.headers.getSetCookie ? postRes.headers.getSetCookie() : [postRes.headers.get('set-cookie')];
-  if (postCookies && postCookies.length) {
-    for (const c of postCookies) {
-      if (c && c.includes('boostrify_pro_session=')) {
-        const match = c.match(/boostrify_pro_session=([^;]+)/);
-        if (match) sessionCookie = match[1];
+      for (const c of rawCookies) {
+        if (c && c.includes('XSRF-TOKEN=')) {
+          const match = c.match(/XSRF-TOKEN=([^;]+)/);
+          if (match) xsrfToken = decodeURIComponent(match[1]);
+        }
+        if (c && c.includes('boostrify_pro_session=')) {
+          const match = c.match(/boostrify_pro_session=([^;]+)/);
+          if (match) sessionCookie = match[1];
+        }
       }
-      if (c && c.includes('XSRF-TOKEN=')) {
-        const match = c.match(/XSRF-TOKEN=([^;]+)/);
-        if (match) xsrfToken = decodeURIComponent(match[1]);
-      }
-    }
-  }
 
-  sessionState = {
-    xsrfToken,
-    sessionCookie,
-    authCookieHeader: `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`,
-    lastLogin: Date.now(),
+      const cookieHeader = `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`;
+
+      const postRes = await fetch('https://boostrify.pro/login', {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*',
+          'X-XSRF-TOKEN': xsrfToken,
+          'X-Inertia': 'true',
+          'Cookie': cookieHeader,
+          'Referer': 'https://boostrify.pro/login',
+        },
+        body: JSON.stringify({ email, password, remember: true }),
+        redirect: 'manual',
+      });
+
+      // Note: Inertia returns 409 with X-Inertia-Location on successful login redirect
+      if (postRes.status >= 400 && postRes.status !== 409) {
+        const errText = await postRes.text().catch(() => '');
+        sessionState = { xsrfToken: '', sessionCookie: '', authCookieHeader: '', lastLogin: 0 };
+        throw new Error(`Boostrify login failed (${postRes.status}): ${errText.slice(0, 200)}`);
+      }
+
+      const postCookies = postRes.headers.getSetCookie ? postRes.headers.getSetCookie() : [postRes.headers.get('set-cookie')];
+      if (postCookies && postCookies.length) {
+        for (const c of postCookies) {
+          if (c && c.includes('boostrify_pro_session=')) {
+            const match = c.match(/boostrify_pro_session=([^;]+)/);
+            if (match) sessionCookie = match[1];
+          }
+          if (c && c.includes('XSRF-TOKEN=')) {
+            const match = c.match(/XSRF-TOKEN=([^;]+)/);
+            if (match) xsrfToken = decodeURIComponent(match[1]);
+          }
+        }
+      }
+
+      sessionState = {
+        xsrfToken,
+        sessionCookie,
+        authCookieHeader: `XSRF-TOKEN=${encodeURIComponent(xsrfToken)}; boostrify_pro_session=${sessionCookie}`,
+        lastLogin: Date.now(),
+      };
+
+      console.log('[Boostrify Session] Login successful, session established.');
+      return sessionState;
+    } finally {
+      loginPromise = null;
+    }
+  })();
+
+  return loginPromise;
+}
+
+/** Perform an authenticated GET to Boostrify's web session endpoints with automatic 401/419 retry. */
+async function sessionGet(endpoint) {
+  const doReq = async (forceRefresh) => {
+    const sess = await getBoostrifySession(forceRefresh);
+    return fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        'Accept': 'application/json, text/plain, */*',
+        'X-XSRF-TOKEN': sess.xsrfToken,
+        'Cookie': sess.authCookieHeader,
+        'Referer': 'https://boostrify.pro/user/live-chat',
+      },
+    });
   };
 
-  console.log('[Boostrify Session] Login successful, session established.');
-  return sessionState;
+  let res = await doReq(false);
+  if (res.status === 419 || res.status === 401) {
+    console.warn(`[sessionGet] Session expired on ${endpoint} (${res.status}), re-authenticating...`);
+    res = await doReq(true);
+  }
+  return res;
 }
 
 /** Perform an authenticated POST to Boostrify's web session endpoints with automatic 401/419 retry. */
@@ -161,16 +200,17 @@ async function uploadMediaToBoostrify({ filePath, mediaType, mime, filename }) {
 }
 
 /** Send native media via Live Chat session endpoint */
-async function sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, caption }) {
+async function sendNativeMedia({ line, to, type, mediaUrl, filePath, mime, filename, caption }) {
+  const lineId = resolveLineId(line);
   const directUrl = mediaUrl.includes('/v/') ? mediaUrl.replace('/v/', '/uploads/') : mediaUrl;
-  let convId = await getConversationId(to);
+  let convId = await getConversationId(to, lineId);
   if (!convId) {
-    conversationIdCache.clear();
-    convId = await getConversationId(to);
+    conversationIdCache.delete(`${lineId}:${String(to).replace(/\D/g, '')}`);
+    convId = await getConversationId(to, lineId);
   }
 
   if (!convId) {
-    console.warn('[sendNativeMedia] Could not find conversation_id for phone', to);
+    console.warn('[sendNativeMedia] Could not find conversation_id for phone', to, 'on line', lineId);
     return null;
   }
 
@@ -196,10 +236,10 @@ async function sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, c
     reply_message_uuid: null,
   };
 
-  console.log('[sendNativeMedia] Sending via /user/messages:', JSON.stringify(payload));
+  console.log(`[sendNativeMedia line=${lineId}] Sending via /user/messages:`, JSON.stringify(payload));
   const res = await sessionPost('https://boostrify.pro/user/messages', { jsonBody: payload });
   const data = await res.json().catch(() => ({}));
-  console.log('[sendNativeMedia] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid, type: data.type } : data));
+  console.log(`[sendNativeMedia line=${lineId}] Response:`, res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid, type: data.type } : data));
 
   if (!res.ok || (!data.uuid && !data.id)) {
     throw new Error(`Boostrify live-chat send failed: ${JSON.stringify(data)}`);
@@ -209,15 +249,16 @@ async function sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, c
 }
 
 /** Send native standalone text via Live Chat session endpoint (no quoting / no reply context) */
-async function sendNativeText({ to, text }) {
-  let convId = await getConversationId(to);
+async function sendNativeText({ line, to, text }) {
+  const lineId = resolveLineId(line);
+  let convId = await getConversationId(to, lineId);
   if (!convId) {
-    conversationIdCache.clear();
-    convId = await getConversationId(to);
+    conversationIdCache.delete(`${lineId}:${String(to).replace(/\D/g, '')}`);
+    convId = await getConversationId(to, lineId);
   }
 
   if (!convId) {
-    console.warn('[sendNativeText] Could not find conversation_id for phone', to);
+    console.warn('[sendNativeText] Could not find conversation_id for phone', to, 'on line', lineId);
     return null;
   }
 
@@ -228,10 +269,10 @@ async function sendNativeText({ to, text }) {
     module: 'whatsapp',
   };
 
-  console.log('[sendNativeText] Sending via /user/messages:', JSON.stringify(payload));
+  console.log(`[sendNativeText line=${lineId}] Sending via /user/messages:`, JSON.stringify(payload));
   const res = await sessionPost('https://boostrify.pro/user/messages', { jsonBody: payload });
   const data = await res.json().catch(() => ({}));
-  console.log('[sendNativeText] Response:', res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid } : data));
+  console.log(`[sendNativeText line=${lineId}] Response:`, res.status, JSON.stringify(data.uuid ? { ok: true, uuid: data.uuid } : data));
 
   if (!res.ok || (!data.uuid && !data.id)) {
     throw new Error(`Boostrify live-chat text send failed: ${JSON.stringify(data)}`);
@@ -242,19 +283,20 @@ async function sendNativeText({ to, text }) {
 
 /** Send text / image / audio / document. Returns the provider message id. */
 export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mime, filename }) {
+  const lineId = resolveLineId(line);
   // If we have Boostrify credentials, send through the Live Chat session endpoint.
   // This ensures outgoing messages are sent fast and STANDALONE (NOT quoting the previous message).
   if (b.email || b.password) {
     if (mediaUrl) {
       try {
-        const uuid = await sendNativeMedia({ to, type, mediaUrl, filePath, mime, filename, caption: body });
+        const uuid = await sendNativeMedia({ line: lineId, to, type, mediaUrl, filePath, mime, filename, caption: body });
         if (uuid) return uuid;
       } catch (err) {
         console.warn('[sendNativeMedia failed, falling back to REST API]:', err.message);
       }
     } else if (body && body.trim()) {
       try {
-        const uuid = await sendNativeText({ to, text: body.trim() });
+        const uuid = await sendNativeText({ line: lineId, to, text: body.trim() });
         if (uuid) return uuid;
       } catch (err) {
         console.warn('[sendNativeText failed, falling back to REST API]:', err.message);
@@ -262,11 +304,12 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mi
     }
   }
 
-  // Fallback to Boostrify REST API credentials
-  if (b.appKey && b.authKey) {
+  // Fallback to Boostrify REST API credentials (uses the line's specific appKey!)
+  const lineAppKey = getLineAppKey(lineId);
+  if (lineAppKey && b.authKey) {
     const cleanTo = String(to).replace(/[^0-9]/g, '');
     const payload = {
-      appkey: b.appKey,
+      appkey: lineAppKey,
       authkey: b.authKey,
       to: cleanTo,
     };
@@ -279,14 +322,17 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mi
       payload.message = body || '';
     }
 
-    console.log('[Boostrify Send Payload]:', JSON.stringify(payload));
+    console.log(`[Boostrify REST Send line=${lineId}]:`, JSON.stringify(payload));
     const res = await call(b.base + '/whatsapp/message', {
       method: 'POST',
+      line: lineId,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    console.log('[Boostrify Send Response]:', JSON.stringify(data));
+    console.log(`[Boostrify REST Send Response line=${lineId}]:`, JSON.stringify(data));
+    // Clear cache so newly created conversation_id on this line is discovered on next message
+    conversationIdCache.delete(`${lineId}:${cleanTo}`);
     return data?.id || data?.message_id || data?.data?.id || `msg_${Date.now()}`;
   }
 
@@ -298,8 +344,9 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mi
   else if (type === 'document') payload.document = { link: mediaUrl, filename, ...(body && { caption: body }) };
   else throw new Error(`Unsupported type: ${type}`);
 
-  const res = await call(url(b.sendPath, { phone: line }), {
+  const res = await call(url(b.sendPath, { phone: lineId }), {
     method: 'POST',
+    line: lineId,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
@@ -309,50 +356,80 @@ export async function sendMessage({ line, to, type, body, mediaUrl, filePath, mi
 
 const conversationIdCache = new Map();
 
-/** Get Boostrify conversation ID by customer phone */
-export async function getConversationId(phone) {
+/** Get Boostrify conversation ID by customer phone and company line ID */
+export async function getConversationId(phone, line = '191') {
+  const lineId = resolveLineId(line);
   const clean = String(phone).replace(/\D/g, '');
   if (!clean) return null;
-  if (conversationIdCache.has(clean)) return conversationIdCache.get(clean);
+  const cacheKey = `${lineId}:${clean}`;
+  if (conversationIdCache.has(cacheKey)) return conversationIdCache.get(cacheKey);
 
   // Check persistent DB cache first for 0ms lookup
-  const dbConvId = getContactConvId(clean);
+  const dbConvId = getContactConvId(lineId, clean);
   if (dbConvId) {
-    conversationIdCache.set(clean, dbConvId);
+    conversationIdCache.set(cacheKey, dbConvId);
     return dbConvId;
   }
 
+  // 1. Fast lookup via Boostrify Live Chat search scoped to device_id (lineId)
+  if (b.email || b.password) {
+    try {
+      const searchUrl = `https://boostrify.pro/user/live-chat-search?q=${encodeURIComponent(clean)}&device_id=${encodeURIComponent(lineId)}`;
+      const sRes = await sessionGet(searchUrl);
+      if (sRes.ok) {
+        const sJson = await sRes.json().catch(() => ({}));
+        for (const c of sJson?.conversations || []) {
+          const cPlat = String(c.platform_id || lineId);
+          const rawPhone = c.customer?.uuid || c.customer?.meta?.phone || c.customer?.phone || '';
+          const p = String(rawPhone).replace(/\D/g, '');
+          if (p && c.id) {
+            conversationIdCache.set(`${cPlat}:${p}`, c.id);
+            setContactConvId(cPlat, p, c.id);
+          }
+        }
+        if (conversationIdCache.has(cacheKey)) {
+          return conversationIdCache.get(cacheKey);
+        }
+      }
+    } catch (err) {
+      console.warn(`[getConversationId live-chat-search line=${lineId}] failed:`, err.message);
+    }
+  }
+
+  // 2. Fallback to REST API v1/conversations with line-specific X-App-Key
   try {
     let page = 1;
     let lastPage = 1;
     do {
-      const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01&page=${page}`);
+      const res = await call(`${b.base}/whatsapp/v1/conversations?since=2025-01-01&page=${page}`, { line: lineId });
       const json = await res.json();
       lastPage = Number(json?.last_page || 1);
       for (const c of json?.data || []) {
         const p = String(c.customer?.phone || '').replace(/\D/g, '');
         if (p && c.id) {
-          conversationIdCache.set(p, c.id);
-          setContactConvId(p, c.id);
+          conversationIdCache.set(`${lineId}:${p}`, c.id);
+          setContactConvId(lineId, p, c.id);
         }
       }
-      if (conversationIdCache.has(clean)) break;
+      if (conversationIdCache.has(cacheKey)) break;
       page++;
     } while (page <= Math.min(lastPage, 25));
-    return conversationIdCache.get(clean) || null;
+    return conversationIdCache.get(cacheKey) || null;
   } catch (err) {
-    console.warn('[getConversationId] failed:', err.message);
+    console.warn(`[getConversationId REST line=${lineId}] failed:`, err.message);
     return null;
   }
 }
 
 /** Pull message history for a contact. Returns array of normalized messages (see normalizeHistoryItem). */
 export async function fetchHistory(line, contact) {
-  if (b.appKey && b.authKey) {
-    const convId = await getConversationId(contact);
+  const lineId = resolveLineId(line);
+  const lineAppKey = getLineAppKey(lineId);
+  if (lineAppKey && b.authKey) {
+    const convId = await getConversationId(contact, lineId);
     if (!convId) return [];
     try {
-      const res = await call(`${b.base}/whatsapp/v1/conversations/${convId}/messages`);
+      const res = await call(`${b.base}/whatsapp/v1/conversations/${convId}/messages`, { line: lineId });
       const data = await res.json();
       const items = data.data || [];
       return items.map((i) => {
@@ -376,7 +453,7 @@ export async function fetchHistory(line, contact) {
         }
         return {
           id,
-          line,
+          line: lineId,
           phone: contact,
           direction,
           type,
@@ -387,15 +464,15 @@ export async function fetchHistory(line, contact) {
         };
       }).filter(Boolean);
     } catch (err) {
-      console.warn('[fetchHistory] failed for convId', convId, err.message);
+      console.warn('[fetchHistory] failed for convId', convId, 'on line', lineId, err.message);
       return [];
     }
   }
 
-  const res = await call(url(b.historyPath, { phone: line, contact }));
+  const res = await call(url(b.historyPath, { phone: lineId, contact }), { line: lineId });
   const data = await res.json();
   const items = data.data || data.messages || data.results || (Array.isArray(data) ? data : []);
-  return items.map((i) => normalizeHistoryItem(i, line, contact)).filter(Boolean);
+  return items.map((i) => normalizeHistoryItem(i, lineId, contact)).filter(Boolean);
 }
 
 /** Resolve a media id to a downloadable Response (authorized). */
@@ -440,10 +517,12 @@ export function parseMessage(m) {
 
 /** Send an approved template (required to start a conversation / outside the 24h window). */
 export async function sendTemplate({ line, to, name, language, params = [] }) {
-  if (b.appKey && b.authKey) {
+  const lineId = resolveLineId(line);
+  const lineAppKey = getLineAppKey(lineId);
+  if (lineAppKey && b.authKey) {
     const cleanTo = String(to).replace(/[^0-9]/g, '');
     const payload = {
-      appkey: b.appKey,
+      appkey: lineAppKey,
       authkey: b.authKey,
       to: cleanTo,
       type: 'template',
@@ -453,10 +532,12 @@ export async function sendTemplate({ line, to, name, language, params = [] }) {
     };
     const res = await call(b.base + '/whatsapp/message', {
       method: 'POST',
+      line: lineId,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
+    conversationIdCache.delete(`${lineId}:${cleanTo}`);
     return data?.id || data?.message_id || `tpl_${Date.now()}`;
   }
 
@@ -467,15 +548,14 @@ export async function sendTemplate({ line, to, name, language, params = [] }) {
       ...(params.length && { components: [{ type: 'body', parameters: params.map((text) => ({ type: 'text', text: String(text) })) }] }),
     },
   };
-  const res = await call(url(b.sendPath, { phone: line }), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  const res = await call(url(b.sendPath, { phone: lineId }), {
+    method: 'POST', line: lineId, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
   return data?.messages?.[0]?.id || data?.id || data?.message_id || `local_${Date.now()}`;
 }
 
-// Pre-warm session & conversation cache in background so sending has zero latency
+// Pre-warm session in background so sending has zero latency
 setTimeout(() => {
   getBoostrifySession().catch(() => { });
-  getConversationId('1').catch(() => { });
 }, 1000);

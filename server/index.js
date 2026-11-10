@@ -12,11 +12,11 @@ const execFileAsync = promisify(execFile);
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { Server } from 'socket.io';
-import { config } from './config.js';
+import { config, resolveLineId } from './config.js';
 import {
   saveMessage, listMessages, markRead, updateStatus, getMessage,
   listContactsFor, getContact, canAccess, canAccessLine, ensureContact, setOwner, claimIfUnowned, windowOpen,
-  authenticate, ensureAdmin, listUsers, getUser, createUser, updateUser,
+  authenticate, ensureAdmin, listUsers, getUser, createUser, updateUser, setContactConvId,
 } from './db.js';
 import { sendMessage, sendTemplate, fetchHistory, fetchMedia, parseMessage } from './boostrify.js';
 import { seedDemo } from './demo.js';
@@ -128,20 +128,23 @@ const handleWebhookPost = (req, res) => {
   res.sendStatus(200); // ack immediately; process after
   try {
     const parsed = JSON.parse(raw.toString('utf8'));
-    console.log('[Webhook] Received:', JSON.stringify(parsed));
-    handleWebhook(parsed).catch((err) => console.error('webhook async error', err));
+    const lineHint = req.query?.line || req.params?.line || null;
+    console.log(`[Webhook line=${lineHint || 'auto'}] Received:`, JSON.stringify(parsed));
+    handleWebhook(parsed, lineHint).catch((err) => console.error('webhook async error', err));
   } catch (err) {
     console.error('webhook error', err);
   }
 };
 
 app.get('/webhook', handleWebhookGet);
+app.get('/webhook/:line', handleWebhookGet);
 app.get('/webhooks/boostrify', handleWebhookGet);
 
 app.post('/webhook', express.raw({ type: '*/*', limit: '5mb' }), handleWebhookPost);
+app.post('/webhook/:line', express.raw({ type: '*/*', limit: '5mb' }), handleWebhookPost);
 app.post('/webhooks/boostrify', express.raw({ type: '*/*', limit: '5mb' }), handleWebhookPost);
 
-async function handleWebhook(body) {
+async function handleWebhook(body, lineHint = null) {
   // 1. Boostrify native events format ($data['events'])
   if (Array.isArray(body.events)) {
     for (const ev of body.events) {
@@ -149,7 +152,18 @@ async function handleWebhook(body) {
       const custName = ev.customer?.name || ev.name || ev.sender_name || '';
       const direction = ev.direction === 'out' || ev.from_me ? 'out' : 'in';
       const msgId = ev.wamid || String(ev.id) || `boost_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const line = String(ev.number_id || body.number_id || config.lines[0]?.id || '191');
+      const rawLine = lineHint
+        || ev.platform_id
+        || ev.number_id
+        || ev.device_id
+        || ev.phone_number_id
+        || body.platform_id
+        || body.number_id
+        || body.device_id
+        || body.phone_number_id
+        || config.lines[0]?.id
+        || '191';
+      const line = resolveLineId(rawLine);
       const ts = ev.created_at ? new Date(ev.created_at).getTime() : (ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now());
 
       // Boostrify sometimes encodes media metadata as a JSON string in the text field.
@@ -212,6 +226,9 @@ async function handleWebhook(body) {
           media_url: mediaUrl,
           ts,
         }, custName);
+        if (ev.conversation_id) {
+          setContactConvId(line, from, ev.conversation_id);
+        }
         if (row) {
           if (row._isUpdate) {
             emitFor('status', { id: row.id, oldId: row._oldId, status: row.status || 'sent', line, phone: from }, line, from);
@@ -248,8 +265,7 @@ async function handleWebhook(body) {
   for (const v of values) {
     // Which of our numbers received it (Meta format: metadata.phone_number_id / display_phone_number)
     const md = v.metadata || {};
-    const line = config.lines.find((l) => l.id === md.phone_number_id || l.id === md.display_phone_number)?.id
-      || md.phone_number_id || config.lines[0].id;
+    const line = resolveLineId(lineHint || md.phone_number_id || md.display_phone_number || config.lines[0]?.id || '191');
     const names = Object.fromEntries((v.contacts || []).map((c) => [c.wa_id, c.profile?.name]));
     for (const m of v.messages || []) {
       const parsed = parseMessage(m);

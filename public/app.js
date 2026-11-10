@@ -299,15 +299,22 @@
     s.on('disconnect', () => $('conn').classList.remove('on'));
     s.on('message', onIncoming);
     s.on('refresh', async () => {
-      loadContacts();
       try {
-        const me = await api('/api/me');
+        const [me, info] = await Promise.all([api('/api/me'), api('/api/lines')]);
         if (me) {
           state.user = me;
           const canManageUsers = me.role === 'super_admin' || (me.role === 'admin' && Boolean(me.can_manage_users));
           $('admin-btn').classList.toggle('hidden', !canManageUsers);
         }
+        if (info) {
+          state.lines = info.lines;
+          state.allLines = info.allLines || info.lines;
+          if (state.line !== 'all' && !state.lines.some((l) => l.id === state.line)) {
+            state.line = 'all';
+          }
+        }
       } catch { /* ignore */ }
+      loadContacts();
     });
     s.on('status', ({ id, oldId, status }) => {
       const m = state.messages.find((x) => x.id === id || (oldId && x.id === oldId));
@@ -426,7 +433,7 @@
 
   function contactTag(c) {
     const parts = [];
-    if (state.line === 'all' && state.lines.length > 1) parts.push(`${t('via')} ${esc(lineName(c.line))}`);
+    parts.push(`${t('via')} ${esc(lineName(c.line))}`);
     if (c.owner == null) return `<div class="c-line unassigned">${t('unassigned')}${parts.length ? ' • ' + parts.join(' ') : ''}</div>`;
     if (state.user.role === 'admin' || state.user.role === 'super_admin') parts.push(`${t('assigned_to')}: ${esc(c.owner_name || '')}`);
     return parts.length ? `<div class="c-line">${parts.join(' • ')}</div>` : '';
@@ -447,7 +454,25 @@
     $('app').classList.add('open');
     $('head-name').textContent = label(c);
     $('head-phone').textContent = '+' + c.phone;
-    $('head-line').textContent = state.lines.length > 1 ? `${t('via')} ${lineName(line)}` : '';
+    if (state.lines.length > 1) {
+      $('head-line').innerHTML = `${t('via')} <select id="head-line-select" style="background:#1f2c34;color:#00a884;border:1px solid #2a3942;border-radius:6px;padding:1px 6px;font-size:12px;font-family:inherit;cursor:pointer">` +
+        state.lines.map((l) => `<option value="${esc(l.id)}" ${l.id === line ? 'selected' : ''}>${esc(l.name)}</option>`).join('') +
+        `</select>`;
+      $('head-line-select')?.addEventListener('change', async (ev) => {
+        const targetLine = ev.target.value;
+        if (targetLine === line) return;
+        try {
+          const switched = await api('/api/chats', jsonOpts('POST', { line: targetLine, phone: c.phone, name: c.name || '' }));
+          await loadContacts();
+          openChat(switched.line, switched.phone);
+        } catch (err) {
+          alert(err.message);
+          ev.target.value = line;
+        }
+      });
+    } else {
+      $('head-line').textContent = `${t('via')} ${lineName(line)}`;
+    }
     $('head-avatar').outerHTML = `<div id="head-avatar" class="avatar" ${avatar(c)}>${esc(initial(c))}</div>`;
     clearAttachment();
     renderContacts();
@@ -943,16 +968,29 @@
     `).join('');
   }
 
-  function userLinesPills(u) {
+  function userLinesPills(u, canEditTarget) {
     if (u.role === 'super_admin' || u.role === 'admin') {
       const permBadge = (u.role === 'admin' && u.can_manage_users)
         ? `<span class="line-pill" style="background:#fef3c7;color:#92400e;border-color:#fde68a">${t('badge_user_mgmt')}</span>`
         : '';
       return `<div class="user-lines-tags"><span class="line-pill">${t('all_countries_admin')}</span>${permBadge}</div>`;
     }
-    const allowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
-    if (!allowed.length) return `<div class="user-lines-tags"><span class="line-pill none">${t('no_lines_allowed')}</span></div>`;
-    return `<div class="user-lines-tags">${allowed.map((id) => `<span class="line-pill">${esc(lineName(id))}</span>`).join('')}</div>`;
+    const allList = state.allLines || state.lines || [];
+    const rawAllowed = (u.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
+    // If empty, all lines are currently enabled by default
+    const activeIds = rawAllowed.length ? rawAllowed : allList.map((l) => String(l.id));
+    if (!canEditTarget) {
+      return `<div class="user-lines-tags">${activeIds.map((id) => `<span class="line-pill">${esc(lineName(id))}</span>`).join('')}</div>`;
+    }
+    return `<div class="user-lines-tags" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">` +
+      allList.map((l) => {
+        const checked = activeIds.includes(String(l.id));
+        return `<label class="line-pill" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:3px 9px;background:${checked ? 'rgba(0,168,132,0.18)' : 'rgba(255,255,255,0.05)'};color:${checked ? '#00a884' : '#8696a0'};border:1px solid ${checked ? '#00a884' : '#2a3942'}">
+          <input type="checkbox" data-line-toggle="${esc(l.id)}" data-uid="${u.id}" ${checked ? 'checked' : ''} style="accent-color:#00a884;margin:0;cursor:pointer" />
+          <span>${esc(l.name)}</span>
+        </label>`;
+      }).join('') +
+      `</div>`;
   }
 
   function syncRolePermUI() {
@@ -976,18 +1014,16 @@
     const isSuper = state.user?.role === 'super_admin';
     $('users-list').innerHTML = state.users.map((u) => {
       const roleText = u.role === 'super_admin' ? t('role_super_admin') : (u.role === 'admin' ? t('role_admin') : t('role_agent'));
-      const isPrivileged = u.role === 'super_admin' || u.role === 'admin';
       const canEditTarget = isSuper || u.role !== 'super_admin';
       return `
       <div class="user-row ${u.active ? '' : 'off'}">
         <div class="avatar" style="width:36px;height:36px;font-size:15px;background:hsl(${hue(u.username)} 45% 38%)">${esc(u.name.charAt(0))}</div>
         <div class="u-info">
           <div><strong>${esc(u.name)}</strong> <span class="role ${u.role}">${esc(roleText)}</span> <small dir="ltr" style="display:inline">@${esc(u.username)}</small></div>
-          ${userLinesPills(u)}
+          ${userLinesPills(u, canEditTarget)}
         </div>
         <div class="user-actions">
           ${canEditTarget ? `<button class="btn ghost small" data-act="pw" data-id="${u.id}">${t('change_password')}</button>` : ''}
-          ${(!isPrivileged && canEditTarget) ? `<button class="btn ghost small" data-act="lines" data-id="${u.id}">${t('allowed_lines_btn')}</button>` : ''}
           ${(isSuper && u.role === 'admin') ? `<button class="btn ghost small" data-act="perm" data-id="${u.id}">${u.can_manage_users ? t('revoke_user_mgmt') : t('grant_user_mgmt')}</button>` : ''}
           ${(u.id !== state.user.id && canEditTarget) ? `<button class="btn ghost small" data-act="toggle" data-id="${u.id}">${u.active ? t('deactivate_btn') : t('activate_btn')}</button>` : ''}
         </div>
@@ -999,6 +1035,27 @@
     $('admin-error').textContent = '';
     await renderUsers();
     openModal('modal-admin');
+  });
+
+  $('users-list').addEventListener('change', async (e) => {
+    const cb = e.target.closest('input[data-line-toggle]');
+    if (!cb) return;
+    const uid = Number(cb.dataset.uid);
+    const rowCbs = [...document.querySelectorAll(`input[data-line-toggle][data-uid="${uid}"]:checked`)];
+    if (!rowCbs.length) {
+      cb.checked = true;
+      $('admin-error').textContent = t('require_one_line_err');
+      return;
+    }
+    $('admin-error').textContent = '';
+    const newAllowed = rowCbs.map((x) => x.dataset.lineToggle);
+    try {
+      await api(`/api/users/${uid}`, jsonOpts('PATCH', { allowed_lines: newAllowed }));
+      await renderUsers();
+    } catch (err) {
+      $('admin-error').textContent = err.message;
+      await renderUsers();
+    }
   });
 
   $('users-list').addEventListener('click', async (e) => {

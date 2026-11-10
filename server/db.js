@@ -250,14 +250,28 @@ export const setOwner = (line, phone, owner) =>
 export const claimIfUnowned = (line, phone, uid) =>
   db.prepare('UPDATE contacts SET owner = ? WHERE line = ? AND phone = ? AND owner IS NULL').run(uid, line, phone);
 
-export const setContactConvId = (phone, convId) => {
-  const clean = String(phone).replace(/\D/g, '');
-  if (!clean || !convId) return;
-  db.prepare('UPDATE contacts SET conv_id = ? WHERE phone = ?').run(convId, clean);
+export const setContactConvId = (lineOrPhone, phoneOrConvId, maybeConvId) => {
+  if (maybeConvId !== undefined) {
+    const line = String(lineOrPhone || '').trim();
+    const clean = String(phoneOrConvId || '').replace(/\D/g, '');
+    if (!line || !clean || !maybeConvId) return;
+    db.prepare('UPDATE contacts SET conv_id = ? WHERE line = ? AND phone = ?').run(maybeConvId, line, clean);
+    return;
+  }
+  const clean = String(lineOrPhone || '').replace(/\D/g, '');
+  if (!clean || !phoneOrConvId) return;
+  db.prepare('UPDATE contacts SET conv_id = ? WHERE phone = ?').run(phoneOrConvId, clean);
 };
 
-export const getContactConvId = (phone) => {
-  const clean = String(phone).replace(/\D/g, '');
+export const getContactConvId = (lineOrPhone, maybePhone) => {
+  if (maybePhone !== undefined) {
+    const line = String(lineOrPhone || '').trim();
+    const clean = String(maybePhone || '').replace(/\D/g, '');
+    if (!line || !clean) return null;
+    const row = db.prepare('SELECT conv_id FROM contacts WHERE line = ? AND phone = ? AND conv_id IS NOT NULL').get(line, clean);
+    return row?.conv_id || null;
+  }
+  const clean = String(lineOrPhone || '').replace(/\D/g, '');
   if (!clean) return null;
   const row = db.prepare('SELECT conv_id FROM contacts WHERE phone = ? AND conv_id IS NOT NULL').get(clean);
   return row?.conv_id || null;
