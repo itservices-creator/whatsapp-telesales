@@ -208,29 +208,26 @@ export function ensureAdmin(password) {
   }
 }
 
+export const getAgentLine = (user) => {
+  const first = (user?.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean)[0];
+  if (first && config.lines.some((l) => String(l.id) === String(first))) return String(first);
+  return String(config.lines[0]?.id || '191');
+};
+
 export const canAccessLine = (user, lineId) => {
   if (!user) return false;
   if (user.role === 'super_admin' || user.role === 'admin') return true;
-  // If company only has 1 line configured, everyone has access to it
-  if (config.lines && config.lines.length === 1 && String(lineId) === String(config.lines[0].id)) return true;
-  // If user has no specific allowed_lines or it's empty, allow all company lines by default
-  if (!user.allowed_lines || user.allowed_lines.trim() === '') return true;
-  const list = user.allowed_lines.split(',').map((s) => s.trim()).filter(Boolean);
-  return list.includes(String(lineId));
+  return String(lineId) === getAgentLine(user);
 };
 
 const withOwner = `SELECT c.*, u.name AS owner_name FROM contacts c LEFT JOIN users u ON u.id = c.owner`;
-/** Agents see their own chats ONLY (assigned to them or created by them). Admins & Super Admins see all chats. */
+/** Agents see their own chats ONLY on their assigned line. Admins & Super Admins see all chats. */
 export const listContactsFor = (user) => {
   if (user.role === 'super_admin' || user.role === 'admin') {
     return db.prepare(`${withOwner} ORDER BY c.last_message_at DESC`).all();
   }
-  const lines = (user.allowed_lines || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!lines.length || (config.lines && config.lines.length === 1)) {
-    return db.prepare(`${withOwner} WHERE c.owner = ? ORDER BY c.last_message_at DESC`).all(user.id);
-  }
-  const placeholders = lines.map(() => '?').join(',');
-  return db.prepare(`${withOwner} WHERE c.line IN (${placeholders}) AND c.owner = ? ORDER BY c.last_message_at DESC`).all(...lines, user.id);
+  const agentLine = getAgentLine(user);
+  return db.prepare(`${withOwner} WHERE c.line = ? AND c.owner = ? ORDER BY c.last_message_at DESC`).all(agentLine, user.id);
 };
 
 export const getContact = (line, phone) =>

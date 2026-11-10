@@ -15,7 +15,7 @@ import { Server } from 'socket.io';
 import { config, resolveLineId } from './config.js';
 import {
   saveMessage, listMessages, markRead, updateStatus, getMessage,
-  listContactsFor, getContact, canAccess, canAccessLine, ensureContact, setOwner, claimIfUnowned, windowOpen,
+  listContactsFor, getContact, canAccess, canAccessLine, getAgentLine, ensureContact, setOwner, claimIfUnowned, windowOpen,
   authenticate, ensureAdmin, listUsers, getUser, createUser, updateUser, setContactConvId,
 } from './db.js';
 import { sendMessage, sendTemplate, fetchHistory, fetchMedia, parseMessage } from './boostrify.js';
@@ -316,8 +316,8 @@ app.get('/api/lines', requireAuth, (req, res) => {
   const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
   const permitted = isAdmin
     ? config.lines
-    : config.lines.filter((l) => canAccessLine(req.user, l.id));
-  const finalLines = permitted.length ? permitted : config.lines;
+    : config.lines.filter((l) => String(l.id) === getAgentLine(req.user));
+  const finalLines = permitted.length ? permitted : [config.lines[0]];
   res.json({ lines: finalLines, allLines: config.lines, demo: config.demo });
 });
 app.get('/api/templates', requireAuth, (_req, res) => {
@@ -341,12 +341,17 @@ app.post('/api/users', requireAuth, requireUserManager, (req, res) => {
     res.json(getUser(createUser({ username, name, password, role: validRole, allowed_lines, can_manage_users: allowUserMgmt })));
   } catch { res.status(409).json({ error: 'اسم المستخدم موجود بالفعل' }); }
 });
-app.patch('/api/users/:id', requireAuth, requireUserManager, (req, res) => {
+app.patch('/api/users/:id', requireAuth, requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const target = getUser(id);
   if (!target) return res.sendStatus(404);
   if (id === req.user.id && req.body.active === false) return res.status(400).json({ error: 'لا يمكنك تعطيل حسابك' });
   const updates = { ...(req.body || {}) };
+  const keys = Object.keys(updates);
+  const isOnlyLineChange = keys.length === 1 && keys[0] === 'allowed_lines' && target.role === 'agent';
+  if (!isOnlyLineChange && !canManageUsers(req.user)) {
+    return res.status(403).json({ error: 'صلاحية المدير العام أو المشرف المفوض فقط' });
+  }
   if (req.user.role !== 'super_admin') {
     if (target.role === 'super_admin') return res.status(403).json({ error: 'لا يمكنك تعديل حساب المدير العام' });
     if (updates.role === 'super_admin') return res.status(403).json({ error: 'لا يمكنك ترقية مستخدم لمدير عام' });
@@ -362,13 +367,14 @@ app.get('/api/contacts', requireAuth, (req, res) => res.json(listContactsFor(req
 
 /** Start a new conversation with a customer number; the employee who starts it owns it. */
 app.post('/api/chats', requireAuth, (req, res) => {
-  const line = String(req.body?.line || '');
+  const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+  // Employees cannot choose the line; force their admin-assigned line
+  const line = isAdmin ? String(req.body?.line || config.lines[0]?.id || '191') : getAgentLine(req.user);
   const phone = String(req.body?.phone || '').replace(/\D/g, '').replace(/^00/, '');
   if (!config.lines.some((l) => l.id === line)) return res.status(400).json({ error: 'رقم الشركة غير صحيح' });
   if (!canAccessLine(req.user, line)) return res.status(403).json({ error: 'ليس لديك صلاحية استخدام هذا الرقم' });
   if (phone.length < 8 || phone.length > 15) return res.status(400).json({ error: 'رقم العميل غير صحيح (اكتبه بصيغة دولية بدون +، مثال 201001234567)' });
   const existing = getContact(line, phone);
-  const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
   if (existing && existing.owner && existing.owner !== req.user.id && !isAdmin) {
     return res.status(409).json({ error: `العميل ده مع الموظف ${existing.owner_name}` });
   }
