@@ -1,11 +1,10 @@
 [
   {
-    "name": "greeting_intro",
+    "name": "define_employee_name_for_customer",
     "language": "ar",
-    "label": "👋 رسالة افتتاحية (حياك الله معك...)",
-    "body": "حياك الله معك {{1}} من WAFY Store",
-    "params": ["اسم الموظف"],
-    "is_quick_text": true
+    "label": "👋 رسالة افتتاحية (حياك الله معك... من وافي)",
+    "body": "حياك الله معك {{1}} من وافي",
+    "params": ["اسم الموظف"]
   },
   {
     "name": "delivered",

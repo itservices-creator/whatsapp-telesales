@@ -455,6 +455,9 @@
     $('head-name').textContent = label(c);
     $('head-phone').textContent = '+' + c.phone;
     const isAdmin = state.user.role === 'super_admin' || state.user.role === 'admin';
+    // Show edit-name button for admins only
+    const editNameBtn = $('btn-edit-name');
+    if (editNameBtn) editNameBtn.style.display = isAdmin ? '' : 'none';
     if (isAdmin && state.lines.length > 1) {
       $('head-line').innerHTML = `${t('via')} <select id="head-line-select" style="background:#1f2c34;color:#00a884;border:1px solid #2a3942;border-radius:6px;padding:1px 6px;font-size:12px;font-family:inherit;cursor:pointer">` +
         state.lines.map((l) => `<option value="${esc(l.id)}" ${l.id === line ? 'selected' : ''}>${esc(l.name)}</option>`).join('') +
@@ -561,6 +564,30 @@
   }
 
   $('back').addEventListener('click', () => { $('app').classList.remove('open'); state.active = null; renderContacts(); });
+
+  // --- تعديل اسم العميل ---
+  const editNameBtn = $('btn-edit-name');
+  if (editNameBtn) {
+    editNameBtn.addEventListener('click', async () => {
+      if (!state.active) return;
+      const c = state.active;
+      const currentName = $('head-name').textContent || '';
+      const newName = window.prompt('اكتب الاسم الجديد للعميل:', currentName);
+      if (newName === null) return; // cancelled
+      try {
+        const updated = await api(
+          `/api/contacts/${encodeURIComponent(c.line)}/${encodeURIComponent(c.phone)}/name`,
+          { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) }
+        );
+        // Update local state
+        const idx = state.contacts.findIndex((x) => x.line === c.line && x.phone === c.phone);
+        if (idx !== -1) state.contacts[idx] = updated;
+        state.active = updated;
+        $('head-name').textContent = updated.name || ('+' + updated.phone);
+        renderContacts();
+      } catch (err) { alert('فشل تعديل الاسم: ' + err.message); }
+    });
+  }
 
   // ---------- Composer & Sending ----------
   const ta = $('text');
@@ -941,7 +968,7 @@
     btnQuickIntro.addEventListener('click', () => {
       if (!state.active) return;
       const myName = (state.user?.name || '').trim();
-      const text = `حياك الله معك ${myName} من WAFY Store`;
+      const text = `حياك الله معك ${myName} من وافي`;
       ta.value = text;
       ta.style.height = 'auto';
       ta.style.height = Math.min(ta.scrollHeight, 140) + 'px';

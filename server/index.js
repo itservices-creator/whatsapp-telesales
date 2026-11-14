@@ -1,3 +1,5 @@
+import dns from 'node:dns';
+dns.setDefaultResultOrder('ipv4first');
 import express from 'express';
 import multer from 'multer';
 import { createServer } from 'node:http';
@@ -16,7 +18,7 @@ import { config, resolveLineId } from './config.js';
 import {
   saveMessage, listMessages, markRead, updateStatus, getMessage,
   listContactsFor, getContact, canAccess, canAccessLine, getAgentLine, ensureContact, setOwner, claimIfUnowned, windowOpen,
-  authenticate, ensureAdmin, listUsers, getUser, createUser, updateUser, setContactConvId,
+  authenticate, ensureAdmin, listUsers, getUser, createUser, updateUser, setContactConvId, setContactName, updateMessageMedia,
 } from './db.js';
 import { sendMessage, sendTemplate, fetchHistory, fetchMedia, parseMessage } from './boostrify.js';
 import { seedDemo } from './demo.js';
@@ -176,39 +178,52 @@ async function handleWebhook(body, lineHint = null) {
       if (typeof rawText === 'string' && rawText.trim().startsWith('{')) {
         try {
           const parsed = JSON.parse(rawText);
-          // Boostrify wraps media as: { mime_type, sha256, id, url, link, image/audio/video: { link } }
-          const url = parsed.url || parsed.link
-            || parsed.image?.link || parsed.audio?.link || parsed.video?.link
-            || parsed.header?.image?.link || null;
-          const mime = parsed.mime_type || null;
-          if (url && (url.includes('lookaside.fbsbx.com') || url.includes('cdn') || url.startsWith('http'))) {
-            mediaUrl = url;
-            mimeHint = mime || mimeHint;
-            // Determine type from mime
-            if (mime) {
-              if (mime.startsWith('image/')) msgType = 'image';
-              else if (mime.startsWith('audio/')) msgType = 'audio';
-              else if (mime.startsWith('video/')) msgType = 'video';
-              else msgType = 'document';
-            } else {
-              msgType = 'image'; // default fallback
+          if (parsed.message) {
+            const clean = parsed.message.text?.body ?? parsed.message.text ?? parsed.message.body;
+            if (clean) rawText = clean;
+            const innerUrl = parsed.message.url || parsed.message.link || parsed.message.image?.link || parsed.message.video?.link || parsed.message.audio?.link;
+            if (innerUrl) {
+              mediaUrl = innerUrl;
+              if (parsed.message.type) msgType = parsed.message.type;
+              if (!clean) rawText = '';
             }
-            rawText = '';
+          } else {
+            // Boostrify wraps media as: { mime_type, sha256, id, url, link, image/audio/video: { link } }
+            const url = parsed.url || parsed.link
+              || parsed.image?.link || parsed.audio?.link || parsed.video?.link
+              || parsed.header?.image?.link || null;
+            const mime = parsed.mime_type || null;
+            if (url && (url.includes('lookaside.fbsbx.com') || url.includes('cdn') || url.startsWith('http'))) {
+              mediaUrl = url;
+              mimeHint = mime || mimeHint;
+              // Determine type from mime
+              if (mime) {
+                if (mime.startsWith('image/')) msgType = 'image';
+                else if (mime.startsWith('audio/')) msgType = 'audio';
+                else if (mime.startsWith('video/')) msgType = 'video';
+                else msgType = 'document';
+              } else {
+                msgType = 'image'; // default fallback
+              }
+              rawText = '';
+            }
           }
         } catch { /* not JSON, keep as-is */ }
       }
 
-      // Also handle when ev.media_url is set directly (Boostrify newer format)
+      // Also handle when ev.media_url or ev.attachments is set directly (Boostrify newer format)
       if (!mediaUrl && ev.media_url) mediaUrl = ev.media_url;
+      if (!mediaUrl && Array.isArray(ev.attachments) && ev.attachments[0]) mediaUrl = ev.attachments[0];
+      if (!mediaUrl && typeof ev.attachment === 'string') mediaUrl = ev.attachment;
       if (mediaUrl && msgType === 'text') {
         // Guess type from mime or URL
-        if (mimeHint?.startsWith('audio/')) msgType = 'audio';
-        else if (mimeHint?.startsWith('video/')) msgType = 'video';
+        if (mimeHint?.startsWith('audio/') || mediaUrl.match(/\.(ogg|mp3|m4a|wav|webm)/i)) msgType = 'audio';
+        else if (mimeHint?.startsWith('video/') || mediaUrl.match(/\.(mp4|mov|avi|3gp)/i)) msgType = 'video';
         else msgType = 'image';
       }
 
       // *** Download and save media locally immediately so URLs don't expire ***
-      if (mediaUrl && mediaUrl.startsWith('http')) {
+      if (mediaUrl && mediaUrl.startsWith('http') && !mediaUrl.includes('lookaside.fbsbx.com')) {
         const localPath = await downloadMedia(mediaUrl, mimeHint);
         if (localPath) mediaUrl = localPath;
       }
@@ -380,6 +395,17 @@ app.post('/api/chats', requireAuth, (req, res) => {
   }
   ensureContact(line, phone, String(req.body?.name || '').trim(), req.user.id);
   setOwner(line, phone, req.user.id);
+  refreshAll();
+  res.json(getContact(line, phone));
+});
+
+// --- تعديل اسم العميل (admin/super_admin فقط) ---
+app.patch('/api/contacts/:line/:phone/name', requireAuth, requireAdmin, (req, res) => {
+  const { line, phone } = req.params;
+  const contact = getContact(line, phone);
+  if (!contact) return res.sendStatus(404);
+  const name = String(req.body?.name ?? '').trim();
+  setContactName(line, phone, name);
   refreshAll();
   res.json(getContact(line, phone));
 });

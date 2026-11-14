@@ -443,13 +443,32 @@ export async function fetchHistory(line, contact) {
         if (typeof body === 'string' && body.trim().startsWith('{')) {
           try {
             const parsed = JSON.parse(body);
-            if (parsed.url || parsed.link) {
+            if (parsed.message) {
+              const clean = parsed.message.text?.body ?? parsed.message.text ?? parsed.message.body;
+              if (clean) body = clean;
+              const cleanUrl = parsed.message.url || parsed.message.link || parsed.message.image?.link || parsed.message.video?.link || parsed.message.audio?.link;
+              if (cleanUrl) {
+                if (!media_url || media_url.includes('lookaside.fbsbx.com')) media_url = cleanUrl;
+                if (!clean) body = '';
+              }
+              if (parsed.message.type && type === 'text') type = parsed.message.type;
+            } else if (parsed.url || parsed.link) {
               if (!media_url || media_url.includes('lookaside.fbsbx.com')) {
                 media_url = parsed.url || parsed.link;
               }
               body = '';
             }
           } catch { }
+        }
+        if (!media_url && Array.isArray(i.attachments) && i.attachments[0]) media_url = i.attachments[0];
+        if (!media_url && typeof i.attachment === 'string') media_url = i.attachment;
+        if (!media_url && i.image?.link) media_url = i.image.link;
+        if (!media_url && i.video?.link) media_url = i.video.link;
+        if (!media_url && i.audio?.link) media_url = i.audio.link;
+        if (media_url && type === 'text') {
+          if (media_url.match(/\.(jpeg|jpg|png|webp|gif)/i)) type = 'image';
+          else if (media_url.match(/\.(ogg|mp3|m4a|wav|webm)/i)) type = 'audio';
+          else if (media_url.match(/\.(mp4|mov|avi|3gp)/i)) type = 'video';
         }
         return {
           id,

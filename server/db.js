@@ -36,6 +36,26 @@ CREATE INDEX IF NOT EXISTS idx_messages_chat_ts ON messages(line, phone, ts);
 try {
   db.exec('ALTER TABLE contacts ADD COLUMN conv_id INTEGER');
 } catch (_) {}
+try {
+  db.exec('ALTER TABLE contacts ADD COLUMN custom_name TEXT');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE contacts ADD COLUMN push_name TEXT');
+} catch (_) {}
+
+// One-time startup cleanup: unwrap quoted message JSON stored as raw text
+try {
+  const quotedMsgs = db.prepare(`SELECT id, body FROM messages WHERE body LIKE '{"original_message_id"%'`).all();
+  for (const q of quotedMsgs) {
+    try {
+      const parsed = JSON.parse(q.body);
+      const clean = parsed.message?.text?.body ?? parsed.message?.text ?? parsed.message?.body;
+      if (clean) {
+        db.prepare('UPDATE messages SET body = ? WHERE id = ?').run(clean, q.id);
+      }
+    } catch {}
+  }
+} catch (_) {}
 
 // One-time startup cleanup: remove duplicate outgoing messages created by webhook/REST mismatch
 try {
@@ -110,15 +130,26 @@ export function saveMessage(m, contactName) {
     m.mime ?? null, m.filename ?? null, m.status ?? 'sent', m.ts);
 
   const inc = m.direction === 'in' ? 1 : 0;
+  const cleanContactName = (contactName || '').trim();
   db.prepare(
-    `INSERT INTO contacts (line, phone, name, last_message_at, last_preview, unread)
-     VALUES (?,?,?,?,?,?)
+    `INSERT INTO contacts (line, phone, name, push_name, last_message_at, last_preview, unread)
+     VALUES (?,?,?,?,?,?,?)
      ON CONFLICT(line, phone) DO UPDATE SET
-       name = COALESCE(NULLIF(?, ''), name),
+       push_name = CASE WHEN ? != '' THEN ? ELSE push_name END,
+       name = CASE
+         WHEN custom_name IS NOT NULL AND TRIM(custom_name) != '' THEN custom_name
+         WHEN ? != '' THEN ?
+         ELSE name
+       END,
        last_message_at = MAX(last_message_at, excluded.last_message_at),
        last_preview = CASE WHEN excluded.last_message_at >= last_message_at THEN excluded.last_preview ELSE last_preview END,
        unread = unread + ?`,
-  ).run(m.line, m.phone, contactName || '', m.ts, previewOf(m), inc, contactName || '', inc);
+  ).run(
+    m.line, m.phone, cleanContactName || '', cleanContactName || null, m.ts, previewOf(m), inc,
+    cleanContactName, cleanContactName,
+    cleanContactName, cleanContactName,
+    inc
+  );
   return db.prepare('SELECT * FROM messages WHERE id = ?').get(m.id);
 }
 
@@ -239,8 +270,29 @@ export const canAccess = (user, contact) => {
 };
 
 export function ensureContact(line, phone, name, owner) {
-  db.prepare('INSERT OR IGNORE INTO contacts (line, phone, name, owner) VALUES (?,?,?,?)').run(line, phone, name || '', owner ?? null);
-  if (name) db.prepare("UPDATE contacts SET name = ? WHERE line = ? AND phone = ? AND (name IS NULL OR name = '')").run(name, line, phone);
+  const trimmed = (name || '').trim();
+  db.prepare(`
+    INSERT INTO contacts (line, phone, name, custom_name, owner)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(line, phone) DO UPDATE SET
+      owner = COALESCE(excluded.owner, owner),
+      custom_name = CASE WHEN excluded.custom_name IS NOT NULL AND excluded.custom_name != '' THEN excluded.custom_name ELSE custom_name END,
+      name = CASE WHEN excluded.custom_name IS NOT NULL AND excluded.custom_name != '' THEN excluded.custom_name ELSE name END
+  `).run(line, phone, trimmed, trimmed || null, owner ?? null);
+}
+
+export function setContactName(line, phone, name) {
+  const trimmed = String(name || '').trim();
+  if (trimmed) {
+    db.prepare('UPDATE contacts SET name = ?, custom_name = ? WHERE line = ? AND phone = ?').run(trimmed, trimmed, line, phone);
+  } else {
+    // If cleared, revert to push_name if available
+    db.prepare('UPDATE contacts SET custom_name = NULL, name = COALESCE(NULLIF(push_name, ""), phone) WHERE line = ? AND phone = ?').run(line, phone);
+  }
+}
+
+export function updateMessageMedia(id, mediaUrl) {
+  db.prepare('UPDATE messages SET media_url = ? WHERE id = ?').run(mediaUrl, id);
 }
 export const setOwner = (line, phone, owner) =>
   db.prepare('UPDATE contacts SET owner = ? WHERE line = ? AND phone = ?').run(owner ?? null, line, phone);
